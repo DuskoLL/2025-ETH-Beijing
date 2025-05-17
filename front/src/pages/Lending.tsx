@@ -99,11 +99,22 @@ const LoanDetailItem = styled(Box)(({ theme }) => ({
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: theme.spacing(2),
+  padding: theme.spacing(1.5, 0),
+  borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+}));
+
+const DataCard = styled(Card)(({ theme }) => ({
+  background: alpha(theme.palette.background.paper, 0.5),
+  backdropFilter: 'blur(5px)',
   borderRadius: theme.shape.borderRadius,
-  backgroundColor: alpha(theme.palette.background.paper, 0.5),
-  marginBottom: theme.spacing(2),
-  border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+  boxShadow: `0 4px 20px 0 ${alpha(theme.palette.common.black, 0.1)}`,
+  overflow: 'hidden',
+  border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    borderColor: alpha(theme.palette.primary.main, 0.3),
+    boxShadow: `0 6px 25px 0 ${alpha(theme.palette.common.black, 0.15)}`,
+  },
 }));
 
 const StepContent = styled(Box)(({ theme }) => ({
@@ -113,6 +124,12 @@ const StepContent = styled(Box)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   backgroundColor: alpha(theme.palette.background.paper, 0.5),
 }));
+
+// 辅助函数
+const shortenAddress = (address: string) => {
+  if (!address) return '';
+  return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+};
 
 const steps = ['填写借款信息', '确认借款详情', '完成借贷'];
 
@@ -124,6 +141,8 @@ interface LoanInfo {
   totalRepayment: number;
   creditScore: number;
   maxAmount: number;
+  dueDate: string;
+  interestRate: number;
 }
 
 const Lending: React.FC = () => {
@@ -199,6 +218,11 @@ const Lending: React.FC = () => {
       const totalRepayment = amount + totalInterest;
       const maxAmount = creditScore * 1000; // 最大借款额度与信用分数相关
       
+      // 计算到期日期
+      const currentDate = new Date();
+      const dueDate = new Date(currentDate.setDate(currentDate.getDate() + duration));
+      const formattedDueDate = dueDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+      
       const mockLoanInfo: LoanInfo = {
         amount,
         duration,
@@ -206,7 +230,9 @@ const Lending: React.FC = () => {
         totalInterest,
         totalRepayment,
         creditScore,
-        maxAmount
+        maxAmount,
+        dueDate: formattedDueDate,
+        interestRate: rate * 100 // 转换为百分比
       };
       
       setLoanInfo(mockLoanInfo);
@@ -327,42 +353,58 @@ const Lending: React.FC = () => {
                       }}
                     />
                     
-                    <Box sx={{ px: 1 }}>
-                      <Slider
-                        value={loanAmount ? parseFloat(loanAmount) : 0}
-                        onChange={(_, value) => setLoanAmount(value.toString())}
-                        min={100}
-                        max={loanInfo ? loanInfo.maxAmount : 5000}
-                        step={100}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(value) => `${value} USDC`}
-                        sx={{
-                          color: theme.palette.primary.main,
-                          '& .MuiSlider-thumb': {
-                            '&:hover, &.Mui-focusVisible': {
-                              boxShadow: `0px 0px 0px 8px ${alpha(theme.palette.primary.main, 0.16)}`
-                            },
-                          }
-                        }}
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                      <Typography variant="caption" color="primary" sx={{ fontWeight: 500 }}>
-                        可借额度: {loanInfo ? formatAmount(loanInfo.maxAmount) : '5,000'} USDC
-                      </Typography>
-                      
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
-                          风险等级:
-                        </Typography>
-                        <Chip 
-                          label={getRiskLevel(loanAmount ? parseFloat(loanAmount) : 0)} 
-                          size="small"
-                          color={getRiskColor(loanAmount ? parseFloat(loanAmount) : 0)}
-                          sx={{ height: 20, '& .MuiChip-label': { px: 1, py: 0.5, fontSize: '0.7rem' } }}
+                    {isConnected ? (
+                      <Box sx={{ px: 1 }}>
+                        <Slider
+                          value={loanAmount ? parseFloat(loanAmount) : 0}
+                          onChange={(_, value) => setLoanAmount(value.toString())}
+                          min={100}
+                          max={loanInfo ? loanInfo.maxAmount : 5000}
+                          step={100}
+                          valueLabelDisplay="auto"
+                          valueLabelFormat={(value) => `${value} USDC`}
+                          sx={{
+                            color: theme.palette.primary.main,
+                            '& .MuiSlider-thumb': {
+                              '&:hover, &.Mui-focusVisible': {
+                                boxShadow: `0px 0px 0px 8px ${alpha(theme.palette.primary.main, 0.16)}`
+                              },
+                            }
+                          }}
                         />
                       </Box>
+                    ) : (
+                      <Box sx={{ px: 1, mt: 2 }}>
+                        <Alert severity="info" variant="outlined" sx={{ fontSize: '0.875rem' }}>
+                          请先连接钱包以使用借款功能
+                        </Alert>
+                      </Box>
+                    )}
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                      {isConnected ? (
+                        <Typography variant="caption" color="primary" sx={{ fontWeight: 500 }}>
+                          可借额度: {loanInfo ? formatAmount(loanInfo.maxAmount) : '5,000'} USDC
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                          请连接钱包查看可借额度
+                        </Typography>
+                      )}
+                      
+                      {isConnected && (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                            风险等级:
+                          </Typography>
+                          <Chip 
+                            label={getRiskLevel(loanAmount ? parseFloat(loanAmount) : 0)} 
+                            size="small"
+                            color={getRiskColor(loanAmount ? parseFloat(loanAmount) : 0)}
+                            sx={{ height: 20, '& .MuiChip-label': { px: 1, py: 0.5, fontSize: '0.7rem' } }}
+                          />
+                        </Box>
+                      )}
                     </Box>
                   </Grid>
                   
@@ -486,173 +528,218 @@ const Lending: React.FC = () => {
   );
   
   // 渲染第二步 - 确认借款详情
-  const renderStep2 = () => (
-    <Fade in={activeStep === 1} timeout={800}>
-      <Box>
-        <Grid container spacing={4}>
-          <Grid size={{ xs: 12, md: 8 }}>
-            <GlassCard>
-              <CardContent sx={{ p: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                  <ReceiptIcon color="primary" sx={{ fontSize: 28, mr: 1 }} />
-                  <Typography variant="h5" component="h2" fontWeight="600">
-                    借款详情确认
-                  </Typography>
-                </Box>
-                
-                {loanInfo && (
-                  <Box>
-                    <Box sx={{ mb: 4, p: 3, bgcolor: alpha(theme.palette.primary.main, 0.05), borderRadius: 2 }}>
-                      <Grid container spacing={2}>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                          <Box sx={{ textAlign: 'center', p: 2 }}>
-                            <Typography variant="body2" color="text.secondary" gutterBottom>
-                              借款金额
-                            </Typography>
-                            <Typography variant="h4" fontWeight="700" color="primary.main">
-                              {formatAmount(loanInfo.amount)} USDC
-                            </Typography>
-                          </Box>
+  const renderStep2 = () => {
+    // 计算风险评分 (0-100)
+    const riskScore = loanAmount ? Math.min(100, Math.round((parseFloat(loanAmount) / (loanInfo?.maxAmount || 5000)) * 100)) : 0;
+    
+    // 获取风险评分颜色
+    const getRiskScoreColor = (score: number) => {
+      if (score < 30) return theme.palette.success.main;
+      if (score < 60) return theme.palette.info.main;
+      if (score < 80) return theme.palette.warning.main;
+      return theme.palette.error.main;
+    };
+    
+    return (
+      <Fade in={activeStep === 1} timeout={800}>
+        <Box>
+          <Grid container spacing={4}>
+            <Grid size={{ xs: 12, md: 8 }}>
+              <GlassCard>
+                <CardContent sx={{ p: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <ReceiptIcon color="primary" sx={{ fontSize: 28, mr: 1 }} />
+                    <Typography variant="h5" component="h2" fontWeight="600">
+                      借款详情确认
+                    </Typography>
+                  </Box>
+                  
+                  {loanInfo && (
+                    <Box>
+                      <Grid container spacing={3} sx={{ mb: 3 }}>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                          <DataCard sx={{ height: '100%' }}>
+                            <CardContent>
+                              <Typography variant="subtitle1" fontWeight="500" gutterBottom>
+                                借款信息
+                              </Typography>
+                              <Divider sx={{ my: 1.5 }} />
+                              
+                              <Stack spacing={2}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="body2" color="text.secondary">借款金额</Typography>
+                                  <Typography variant="body1" fontWeight="500">
+                                    {formatAmount(loanInfo.amount)} USDC
+                                  </Typography>
+                                </Box>
+                                
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="body2" color="text.secondary">借款期限</Typography>
+                                  <Typography variant="body1" fontWeight="500">30天</Typography>
+                                </Box>
+                                
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="body2" color="text.secondary">利率</Typography>
+                                  <Typography variant="body1" fontWeight="500">
+                                    {loanInfo.rate || '5.0'}%
+                                  </Typography>
+                                </Box>
+                              </Stack>
+                            </CardContent>
+                          </DataCard>
                         </Grid>
                         
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                          <Box sx={{ textAlign: 'center', p: 2 }}>
-                            <Typography variant="body2" color="text.secondary" gutterBottom>
-                              年化利率
-                            </Typography>
-                            <Typography variant="h4" fontWeight="700" color="secondary.main">
-                              {formatRate(loanInfo.rate)}
-                            </Typography>
-                          </Box>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                          <DataCard sx={{ height: '100%' }}>
+                            <CardContent>
+                              <Typography variant="subtitle1" fontWeight="500" gutterBottom>
+                                还款信息
+                              </Typography>
+                              <Divider sx={{ my: 1.5 }} />
+                              
+                              <Stack spacing={2}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="body2" color="text.secondary">应还总额</Typography>
+                                  <Typography variant="body1" fontWeight="500" color={theme.palette.primary.main}>
+                                    {formatAmount(loanInfo.totalRepayment)} USDC
+                                  </Typography>
+                                </Box>
+                                
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="body2" color="text.secondary">还款日期</Typography>
+                                  <Typography variant="body1" fontWeight="500">
+                                    {loanInfo.dueDate || '30天后'}
+                                  </Typography>
+                                </Box>
+                                
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="body2" color="text.secondary">预计信用变化</Typography>
+                                  <Chip 
+                                    label="+2分" 
+                                    color="success" 
+                                    size="small" 
+                                    sx={{ fontWeight: 500 }}
+                                  />
+                                </Box>
+                              </Stack>
+                            </CardContent>
+                          </DataCard>
                         </Grid>
                       </Grid>
-                    </Box>
-                    
-                    <Divider sx={{ my: 3 }} />
-                    
-                    <Typography variant="h6" fontWeight="600" gutterBottom>
-                      借款详细信息
-                    </Typography>
-                    
-                    <LoanDetailItem>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <CalendarIcon fontSize="small" sx={{ mr: 1, color: theme.palette.text.secondary }} />
-                        <Typography variant="body1">借款期限</Typography>
-                      </Box>
-                      <Typography variant="body1" fontWeight="500">
-                        {loanInfo.duration} 天
-                      </Typography>
-                    </LoanDetailItem>
-                    
-                    <LoanDetailItem>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <MoneyIcon fontSize="small" sx={{ mr: 1, color: theme.palette.text.secondary }} />
-                        <Typography variant="body1">利息总额</Typography>
-                      </Box>
-                      <Typography variant="body1" fontWeight="500">
-                        {formatAmount(loanInfo.totalInterest)} USDC
-                      </Typography>
-                    </LoanDetailItem>
-                    
-                    <LoanDetailItem>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <LocalAtmIcon fontSize="small" sx={{ mr: 1, color: theme.palette.text.secondary }} />
-                        <Typography variant="body1">还款总额</Typography>
-                      </Box>
-                      <Typography variant="body1" fontWeight="500">
-                        {formatAmount(loanInfo.totalRepayment)} USDC
-                      </Typography>
-                    </LoanDetailItem>
-                    
-                    <LoanDetailItem>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <CreditScoreIcon fontSize="small" sx={{ mr: 1, color: theme.palette.text.secondary }} />
-                        <Typography variant="body1">您的信用评分</Typography>
-                      </Box>
-                      <Chip 
-                        label={loanInfo.creditScore} 
-                        color={loanInfo.creditScore >= 90 ? "success" : 
-                               loanInfo.creditScore >= 80 ? "primary" : 
-                               loanInfo.creditScore >= 70 ? "secondary" : "warning"}
-                        size="small"
-                      />
-                    </LoanDetailItem>
-                    
-                    <Divider sx={{ my: 3 }} />
-                    
-                    <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-                      <Button
-                        variant="outlined"
-                        color="inherit"
-                        onClick={handleBack}
-                        startIcon={<ArrowBackIcon />}
-                        disabled={loading}
-                      >
-                        返回修改
-                      </Button>
                       
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={handleConfirmLoan}
-                        endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
-                        disabled={loading}
-                        sx={{
-                          py: 1.2,
-                          px: 3,
-                          fontSize: '1rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        {loading ? '处理中...' : '确认借款'}
-                      </Button>
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          风险评估
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Box sx={{ flexGrow: 1, mr: 2 }}>
+                            <LinearProgress 
+                              variant="determinate" 
+                              value={riskScore} 
+                              sx={{ 
+                                height: 8, 
+                                borderRadius: 4,
+                                backgroundColor: alpha(theme.palette.grey[300], 0.3),
+                                '& .MuiLinearProgress-bar': {
+                                  backgroundColor: getRiskScoreColor(riskScore),
+                                  borderRadius: 4,
+                                }
+                              }}
+                            />
+                          </Box>
+                          <Typography 
+                            variant="body2" 
+                            fontWeight="500"
+                            sx={{ color: getRiskScoreColor(riskScore) }}
+                          >
+                            {riskScore}%
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          风险等级: {getRiskLevel(parseFloat(loanAmount) || 0)}
+                        </Typography>
+                      </Box>
+                      
+                      <Alert severity="info" sx={{ mt: 2, mb: 3 }}>
+                        <Typography variant="body2">
+                          借款将直接发放到您的钱包地址: {shortenAddress(address)}
+                        </Typography>
+                      </Alert>
+                      
+                      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+                        <Button
+                          variant="outlined"
+                          color="inherit"
+                          onClick={handleBack}
+                          startIcon={<ArrowBackIcon />}
+                          disabled={loading}
+                        >
+                          返回修改
+                        </Button>
+                        
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          onClick={handleConfirmLoan}
+                          endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
+                          disabled={loading}
+                          sx={{
+                            py: 1.2,
+                            px: 3,
+                            fontSize: '1rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {loading ? '处理中...' : '确认借款'}
+                        </Button>
+                      </Box>
                     </Box>
+                  )}
+                </CardContent>
+              </GlassCard>
+            </Grid>
+            
+            <Grid size={{ xs: 12, md: 4 }}>
+              <GlassCard>
+                <CardContent sx={{ p: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <InfoIcon color="primary" sx={{ fontSize: 24, mr: 1 }} />
+                    <Typography variant="h6" fontWeight="600">
+                      借贷说明
+                    </Typography>
                   </Box>
-                )}
-              </CardContent>
-            </GlassCard>
+                  
+                  <AnimatedInfoItem>
+                    <Typography variant="body2">
+                      1. 本协议采用AI信用评分系统，根据您的链上行为自动评估信用等级
+                    </Typography>
+                  </AnimatedInfoItem>
+                  
+                  <AnimatedInfoItem>
+                    <Typography variant="body2">
+                      2. 借款利率根据信用等级动态调整，信用越好利率越低
+                    </Typography>
+                  </AnimatedInfoItem>
+                  
+                  <AnimatedInfoItem>
+                    <Typography variant="body2">
+                      3. 还款日期为借款期限到期日，退还全部本息
+                    </Typography>
+                  </AnimatedInfoItem>
+                  
+                  <AnimatedInfoItem>
+                    <Typography variant="body2">
+                      4. 违约将影响信用评分并可能触发治理代币惩罚机制
+                    </Typography>
+                  </AnimatedInfoItem>
+                </CardContent>
+              </GlassCard>
+            </Grid>
           </Grid>
-          
-          <Grid size={{ xs: 12, md: 4 }}>
-            <GlassCard>
-              <CardContent sx={{ p: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                  <InfoIcon color="primary" sx={{ fontSize: 24, mr: 1 }} />
-                  <Typography variant="h6" fontWeight="600">
-                    借贷说明
-                  </Typography>
-                </Box>
-                
-                <AnimatedInfoItem>
-                  <Typography variant="body2">
-                    1. 本协议采用AI信用评分系统，根据您的链上行为自动评估信用等级
-                  </Typography>
-                </AnimatedInfoItem>
-                
-                <AnimatedInfoItem>
-                  <Typography variant="body2">
-                    2. 借款利率根据信用等级动态调整，信用越好利率越低
-                  </Typography>
-                </AnimatedInfoItem>
-                
-                <AnimatedInfoItem>
-                  <Typography variant="body2">
-                    3. 还款日期为借款期限到期日，退还全部本息
-                  </Typography>
-                </AnimatedInfoItem>
-                
-                <AnimatedInfoItem>
-                  <Typography variant="body2">
-                    4. 违约将影响信用评分并可能触发治理代币惩罚机制
-                  </Typography>
-                </AnimatedInfoItem>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-        </Grid>
-      </Box>
-    </Fade>
-  );
+        </Box>
+      </Fade>
+    );
+  };
   
   // 渲染第三步 - 完成借贷
   const renderStep3 = () => (

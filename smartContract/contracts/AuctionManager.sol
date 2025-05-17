@@ -37,7 +37,7 @@ contract AuctionManager is Ownable {
         tokenB = IERC20(_tokenB);
     }
     
-    function startAuction(address user, uint256 loanId, uint256 shortage) external {
+    function startAuction(address user, uint256 loanId) external {
         // Start collateral auction
         uint256 collateralAuctionId = auctions.length;
         auctions.push(Auction({
@@ -136,5 +136,9 @@ contract AuctionManager is Ownable {
     
     function setDebtAuctionDuration(uint256 _duration) external onlyOwner {
         debtAuctionDuration = _duration;
+    }
+
+    function getAuctionCount() view external returns(uint) {
+        return auctions.length;
     }
 }

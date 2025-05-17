@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./IERC20.sol";
+import "./IEERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract AuctionManager is Ownable {
@@ -32,12 +32,12 @@ contract AuctionManager is Ownable {
     event BidPlaced(uint256 auctionId, address bidder, uint256 amount);
     event AuctionSettled(uint256 auctionId, address winner, uint256 amount);
     
-    constructor(address _tokenA, address _tokenB) Ownable(address(this)) {
+    constructor(address _tokenA, address _tokenB) Ownable(msg.sender) {
         tokenA = IERC20(_tokenA);
         tokenB = IERC20(_tokenB);
     }
     
-    function startAuction(address user, uint256 loanId, uint256 shortage) external onlyOwner {
+    function startAuction(address user, uint256 loanId, uint256 shortage) external {
         // Start collateral auction
         uint256 collateralAuctionId = auctions.length;
         auctions.push(Auction({
@@ -56,24 +56,24 @@ contract AuctionManager is Ownable {
         emit AuctionStarted(collateralAuctionId, AuctionType.Collateral, user, loanId, 0);
         
         // If there's a shortage, start debt auction
-        if (shortage > 0) {
-            tokenB.mint(address(this), shortage);
-            uint256 debtAuctionId = auctions.length;
-            auctions.push(Auction({
-                auctionType: AuctionType.Debt,
-                user: address(0),
-                loanId: 0,
-                startTime: block.timestamp,
-                endTime: block.timestamp + debtAuctionDuration,
-                amount: shortage,
-                minBid: (shortage * 90) / 100,
-                highestBidder: address(0),
-                highestBid: 0,
-                settled: false
-            }));
+        // if (shortage > 0) {
+        //     tokenB.mint(address(this), shortage);
+        //     uint256 debtAuctionId = auctions.length;
+        //     auctions.push(Auction({
+        //         auctionType: AuctionType.Debt,
+        //         user: address(0),
+        //         loanId: 0,
+        //         startTime: block.timestamp,
+        //         endTime: block.timestamp + debtAuctionDuration,
+        //         amount: shortage,
+        //         minBid: (shortage * 90) / 100,
+        //         highestBidder: address(0),
+        //         highestBid: 0,
+        //         settled: false
+        //     }));
             
-            emit AuctionStarted(debtAuctionId, AuctionType.Debt, address(0), 0, shortage);
-        }
+        //     emit AuctionStarted(debtAuctionId, AuctionType.Debt, address(0), 0, shortage);
+        // }
     }
     
     function bid(uint256 auctionId, uint256 bidAmount) external {
@@ -110,10 +110,23 @@ contract AuctionManager is Ownable {
             }
             emit AuctionSettled(auctionId, auction.highestBidder, auction.highestBid);
         } else {
-            if (auction.auctionType == AuctionType.Debt) {
-                tokenB.burn(auction.user,auction.amount);
-            }
-            emit AuctionSettled(auctionId, address(0), 0);
+            tokenB.mint(address(this), auction.amount);
+            uint256 debtAuctionId = auctions.length;
+            auctions.push(Auction({
+                auctionType: AuctionType.Debt,
+                user: address(this),
+                loanId: 0,
+                startTime: block.timestamp,
+                endTime: block.timestamp + debtAuctionDuration,
+                amount: auction.amount,
+                minBid: (auction.amount * 80) / 100,
+                highestBidder: address(0),
+                highestBid: 0,
+                settled: false
+            }));
+            
+            emit AuctionStarted(debtAuctionId, AuctionType.Debt, address(0), 0, auction.amount);
+            //emit AuctionSettled(auctionId, address(0), 0);
         }
     }
     

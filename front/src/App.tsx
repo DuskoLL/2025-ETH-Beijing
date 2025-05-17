@@ -14,6 +14,7 @@ import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import CreditScore from './pages/CreditScore';
 import Lending from './pages/Lending';
+import SimpleLending from './pages/SimpleLending';
 import Dashboard from './pages/Dashboard';
 import Repayment from './pages/Repayment';
 

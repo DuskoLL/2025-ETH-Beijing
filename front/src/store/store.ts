@@ -2,12 +2,14 @@ import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
 import { washTradeApi } from '../services/washTradeService';
 import { combinedScoreApi } from '../services/combinedScoreService';
+import walletReducer from './walletSlice';
 
 export const store = configureStore({
   reducer: {
     // 添加washTradeApi reducer
     [washTradeApi.reducerPath]: washTradeApi.reducer,
     [combinedScoreApi.reducerPath]: combinedScoreApi.reducer,
+    wallet: walletReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()

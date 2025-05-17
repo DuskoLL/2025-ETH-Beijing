@@ -19,12 +19,12 @@ contract Blacklist is Ownable {
         return _blacklist.contains(account);
     }
     
-    function addToBlacklist(address account) external onlyOwner {
+    function addToBlacklist(address account) external {
         require(_blacklist.add(account), "Already blacklisted");
         emit AddedToBlacklist(account);
     }
     
-    function removeFromBlacklist(address account) external onlyOwner {
+    function removeFromBlacklist(address account) external {
         require(_blacklist.remove(account), "Not blacklisted");
         emit RemovedFromBlacklist(account);
     }

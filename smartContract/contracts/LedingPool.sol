@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "./IEERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./IBlackList.sol";
 
-contract LendingPool {
+contract LendingPool is Ownable{
     IERC20 public tokenA;
-    ERC20Burnable public tokenB;
+    IERC20 public tokenB;
     
      struct Loan {
         uint256 amount;
@@ -32,13 +30,12 @@ contract LendingPool {
         uint256 penaltyOrReward
     );
     
-    constructor(address _tokenA, address _tokenB, address _blacklist) {
+    constructor(address _tokenA, address _tokenB) Ownable(msg.sender) {
         tokenA = IERC20(_tokenA);
-        tokenB = ERC20Burnable(_tokenB);
+        tokenB = IERC20(_tokenB);
     }
     
-    function borrow(uint256 amount, uint256 collateralAmount, uint256 duration) external {
-        address user = msg.sender;
+    function borrow(address user, uint256 amount, uint256 collateralAmount, uint256 duration) external returns(uint index) {
         require(collateralAmount >= (amount * 150) / 100, "Insufficient collateral");
         require(tokenB.transferFrom(user, address(this), collateralAmount), "Collateral transfer failed");
         require(tokenA.transfer(user, amount), "Loan transfer failed");
@@ -50,9 +47,10 @@ contract LendingPool {
             liquidated: false,
             borrower: user
         }));
+        return loans[user].length - 1;
     }
     
-    function repay(address user, uint256 loanId) external {
+    function repay(address user, uint256 loanId) external returns(uint amount) {
         Loan storage loan = loans[user][loanId];
         require(!loan.liquidated, "Loan already liquidated");
         
@@ -61,6 +59,8 @@ contract LendingPool {
         require(tokenB.transfer(user, loan.collateral), "Collateral return failed");
         
         loan.liquidated = true;
+
+        return repayment;
     }
     
     function liquidate(address user, uint256 loanId, address liquidator) external returns (bool needsAuction, uint256 shortage) {
@@ -99,5 +99,9 @@ contract LendingPool {
     
     function getLoan(address user, uint256 loanId) external view returns (Loan memory) {
         return loans[user][loanId];
+    }
+
+    function getLoans(address user) external view returns (Loan[] memory) {
+        return loans[user];
     }
 }

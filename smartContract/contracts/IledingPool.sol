@@ -1,9 +1,18 @@
 // ILendingPool.sol
 interface ILendingPool {
-    function borrow(address user, uint256 amount, uint256 collateralAmount, uint256 duration) external;
-    function repay(address user, uint256 loanId) external;
-    function liquidate(address user, uint256 loanId) external returns (bool needsAuction, uint256 shortage);
-    function getLoan(address user, uint256 loanId) external view returns (LendingPool.Loan memory);
+
+    struct Loan {
+        uint256 amount;
+        uint256 collateral;
+        uint256 dueTime;
+        bool liquidated;
+        address borrower;
+    }
+
+    function borrow(address user, uint256 amount, uint256 collateralAmount, uint256 duration) external returns(uint);
+    function repay(address user, uint256 loanId) external returns(uint);
+    function liquidate(address user, uint256 loanId, address liquidater) external returns (bool needsAuction, uint256 shortage);
+    function getLoan(address user, uint256 loanId) external view returns (Loan memory);
 }
 
 // IBlacklist.sol

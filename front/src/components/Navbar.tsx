@@ -252,6 +252,7 @@ const Navbar: React.FC = () => {
           >
             连接钱包
           </Button>
+          )}
         </Box>
       </Drawer>
     </Box>

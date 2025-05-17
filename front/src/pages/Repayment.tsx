@@ -94,6 +94,10 @@ interface Loan {
   totalDue: number;
   status: 'active' | 'overdue' | 'paid';
   creditBoost: number;
+  // 新增字段
+  riskPoolInterest: number; // 风险池分配利息
+  lenderInterest: number; // 借款人分配利息
+  collateralAmount: number; // 抵押品金额
 }
 
 const Repayment: React.FC = () => {
@@ -142,7 +146,10 @@ const Repayment: React.FC = () => {
           interest: 50,
           totalDue: 1050,
           status: 'active',
-          creditBoost: 2
+          creditBoost: 2,
+          riskPoolInterest: 10, // 20%进入风险池
+          lenderInterest: 40, // 80%给借款人
+          collateralAmount: 1500 // 150%抵押率
         },
         {
           id: '2',
@@ -151,7 +158,10 @@ const Repayment: React.FC = () => {
           interest: 20,
           totalDue: 520,
           status: 'overdue',
-          creditBoost: 3
+          creditBoost: 3,
+          riskPoolInterest: 4, // 20%进入风险池
+          lenderInterest: 16, // 80%给借款人
+          collateralAmount: 750 // 150%抵押率
         },
         {
           id: '3',
@@ -160,7 +170,10 @@ const Repayment: React.FC = () => {
           interest: 100,
           totalDue: 2100,
           status: 'active',
-          creditBoost: 5
+          creditBoost: 5,
+          riskPoolInterest: 20, // 20%进入风险池
+          lenderInterest: 80, // 80%给借款人
+          collateralAmount: 3000 // 150%抵押率
         },
         {
           id: '4',
@@ -169,7 +182,10 @@ const Repayment: React.FC = () => {
           interest: 40,
           totalDue: 840,
           status: 'paid',
-          creditBoost: 1
+          creditBoost: 1,
+          riskPoolInterest: 8, // 20%进入风险池
+          lenderInterest: 32, // 80%给借款人
+          collateralAmount: 1200 // 150%抵押率
         }
       ];
       
@@ -391,6 +407,24 @@ const Repayment: React.FC = () => {
                                   <Typography variant="body2" color="text.secondary">信用提升</Typography>
                                   <Typography variant="body1" fontWeight="500" sx={{ color: theme.palette.success.main }}>
                                     +{loan.creditBoost} 分
+                                  </Typography>
+                                </Grid>
+                                <Grid size={{ xs: 6 }}>
+                                  <Typography variant="body2" color="text.secondary">借款人利息(80%)</Typography>
+                                  <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                                    {formatAmount(loan.lenderInterest)} USDC
+                                  </Typography>
+                                </Grid>
+                                <Grid size={{ xs: 6 }}>
+                                  <Typography variant="body2" color="text.secondary">风险池利息(20%)</Typography>
+                                  <Typography variant="body1" fontWeight="500" sx={{ color: theme.palette.warning.main }}>
+                                    {formatAmount(loan.riskPoolInterest)} USDC
+                                  </Typography>
+                                </Grid>
+                                <Grid size={{ xs: 6 }}>
+                                  <Typography variant="body2" color="text.secondary">抵押品金额</Typography>
+                                  <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                                    {formatAmount(loan.collateralAmount)} ETH
                                   </Typography>
                                 </Grid>
                               </Grid>

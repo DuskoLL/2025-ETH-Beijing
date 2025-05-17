@@ -26,6 +26,12 @@ import {
   Avatar,
   LinearProgress,
   keyframes,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { styled } from '@mui/material/styles';
@@ -174,6 +180,13 @@ const Dashboard: React.FC = () => {
     stakingPenalties: 0,
     recentTransactions: []
   });
+  
+  // 质押相关状态
+  const [stakeAmount, setStakeAmount] = useState('');
+  const [unstakeAmount, setUnstakeAmount] = useState('');
+  const [stakingDialogOpen, setStakingDialogOpen] = useState(false);
+  const [stakingAction, setStakingAction] = useState<'stake' | 'unstake' | 'claim'>('stake');
+  const [stakingLoading, setStakingLoading] = useState(false);
 
   useEffect(() => {
     if (walletAddress) {
@@ -185,6 +198,44 @@ const Dashboard: React.FC = () => {
     fetchDashboardData();
   }, [address]);
 
+  // 处理质押操作
+  const handleStakingAction = async () => {
+    if (!address) return;
+    
+    setStakingLoading(true);
+    try {
+      // 导入质押服务
+      const stakingService = await import('../services/stakingService').then(m => m.default);
+      
+      let result = false;
+      
+      if (stakingAction === 'stake') {
+        result = await stakingService.stakeTokens(stakeAmount);
+      } else if (stakingAction === 'unstake') {
+        result = await stakingService.unstakeTokens(unstakeAmount);
+      } else if (stakingAction === 'claim') {
+        await stakingService.claimRewards();
+        result = true;
+      }
+      
+      if (result) {
+        // 刷新数据
+        await fetchDashboardData();
+        setStakingDialogOpen(false);
+      }
+    } catch (error) {
+      console.error('质押操作失败:', error);
+    } finally {
+      setStakingLoading(false);
+    }
+  };
+  
+  // 打开质押对话框
+  const openStakingDialog = (action: 'stake' | 'unstake' | 'claim') => {
+    setStakingAction(action);
+    setStakingDialogOpen(true);
+  };
+  
   const fetchDashboardData = async () => {
     if (!address) {
       setLoading(false);
@@ -197,20 +248,45 @@ const Dashboard: React.FC = () => {
       // 模拟API调用
       await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // 获取质押信息
+      let stakingInfo = {
+        stakedAmount: '0',
+        rewards: '0',
+        penalties: '0'
+      };
+      
+      try {
+        // 导入质押服务
+        const stakingService = await import('../services/stakingService').then(m => m.default);
+        stakingInfo = await stakingService.getStakingInfo(address);
+      } catch (error) {
+        console.error('获取质押信息失败:', error);
+      }
+      
+      // 获取风险池信息
+      let riskPoolBalance = '0';
+      try {
+        // 导入风险池服务
+        const riskPoolService = await import('../services/riskPoolService').then(m => m.default);
+        riskPoolBalance = await riskPoolService.getPoolBalance();
+      } catch (error) {
+        console.error('获取风险池信息失败:', error);
+      }
+      
       // 模拟数据
       const mockStats: DashboardStats = {
         totalLoans: Math.floor(Math.random() * 10) + 1,
         activeLoans: Math.floor(Math.random() * 5) + 1,
-        totalValueLocked: Math.floor(Math.random() * 10000) + 5000,
+        totalValueLocked: Math.floor(Math.random() * 10000) + 1000,
         creditScore: Math.floor(Math.random() * 30) + 70,
-        availableCredit: Math.floor(Math.random() * 5000) + 1000,
-        utilizationRate: Math.floor(Math.random() * 80) + 10,
-        // 新增字段数据
-        governanceTokensStaked: Math.floor(Math.random() * 1000) + 100,
-        governanceTokensHeld: Math.floor(Math.random() * 2000) + 500,
-        stableCoinsLimit: Math.floor(Math.random() * 8000) + 2000,
-        stakingRewards: Math.floor(Math.random() * 100) + 10,
-        stakingPenalties: Math.floor(Math.random() * 20),
+        availableCredit: Math.floor(Math.random() * 5000) + 500,
+        utilizationRate: Math.floor(Math.random() * 70) + 10,
+        // 使用从质押服务获取的数据
+        governanceTokensStaked: parseFloat(stakingInfo.stakedAmount) || 0,
+        governanceTokensHeld: Math.floor(Math.random() * 1000) + 100, // 模拟持有量
+        stableCoinsLimit: Math.floor(Math.random() * 10000) + 1000, // 模拟可借额度
+        stakingRewards: parseFloat(stakingInfo.rewards) || 0,
+        stakingPenalties: parseFloat(stakingInfo.penalties) || 0,
         recentTransactions: [
           {
             type: '借款',
@@ -512,6 +588,40 @@ const Dashboard: React.FC = () => {
                           <Typography variant="h5" fontWeight="700" sx={{ color: '#fff' }}>
                             {stats.governanceTokensStaked} TEAM
                           </Typography>
+                          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                            <Button 
+                              variant="outlined" 
+                              size="small" 
+                              onClick={() => openStakingDialog('stake')}
+                              sx={{ 
+                                borderRadius: 2,
+                                borderColor: alpha(theme.palette.primary.main, 0.5),
+                                color: theme.palette.primary.main,
+                                '&:hover': {
+                                  borderColor: theme.palette.primary.main,
+                                  backgroundColor: alpha(theme.palette.primary.main, 0.1)
+                                }
+                              }}
+                            >
+                              质押
+                            </Button>
+                            <Button 
+                              variant="outlined" 
+                              size="small" 
+                              onClick={() => openStakingDialog('unstake')}
+                              sx={{ 
+                                borderRadius: 2,
+                                borderColor: alpha(theme.palette.error.main, 0.5),
+                                color: theme.palette.error.main,
+                                '&:hover': {
+                                  borderColor: theme.palette.error.main,
+                                  backgroundColor: alpha(theme.palette.error.main, 0.1)
+                                }
+                              }}
+                            >
+                              解除质押
+                            </Button>
+                          </Box>
                         </StatsCard>
                       </DataCard>
                     </Grid>
@@ -540,6 +650,29 @@ const Dashboard: React.FC = () => {
                           <Typography variant="h5" fontWeight="700" sx={{ color: '#fff' }}>
                             {stats.stakingRewards} TEAM
                           </Typography>
+                          <Box sx={{ mt: 2 }}>
+                            <Button 
+                              variant="outlined" 
+                              size="small" 
+                              onClick={() => openStakingDialog('claim')}
+                              disabled={parseFloat(stats.stakingRewards.toString()) <= 0}
+                              sx={{ 
+                                borderRadius: 2,
+                                borderColor: alpha(theme.palette.success.main, 0.5),
+                                color: theme.palette.success.main,
+                                '&:hover': {
+                                  borderColor: theme.palette.success.main,
+                                  backgroundColor: alpha(theme.palette.success.main, 0.1)
+                                },
+                                '&.Mui-disabled': {
+                                  borderColor: alpha(theme.palette.success.main, 0.2),
+                                  color: alpha(theme.palette.success.main, 0.3)
+                                }
+                              }}
+                            >
+                              领取分红
+                            </Button>
+                          </Box>
                         </StatsCard>
                       </DataCard>
                     </Grid>
@@ -620,6 +753,129 @@ const Dashboard: React.FC = () => {
           </Box>
         </Fade>
       </Container>
+      
+      {/* 质押操作对话框 */}
+      <Dialog
+        open={stakingDialogOpen}
+        onClose={() => setStakingDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: alpha(theme.palette.background.paper, 0.9),
+            backdropFilter: 'blur(10px)',
+            borderRadius: theme.shape.borderRadius * 2,
+            boxShadow: `0 8px 32px 0 ${alpha(theme.palette.common.black, 0.3)}`,
+          }
+        }}
+      >
+        <DialogTitle sx={{ color: '#fff' }}>
+          {stakingAction === 'stake' ? '质押治理代币' : 
+           stakingAction === 'unstake' ? '解除代币质押' : 
+           '领取质押分红'}
+        </DialogTitle>
+        <DialogContent>
+          {stakingAction !== 'claim' && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label={stakingAction === 'stake' ? '质押数量' : '解除质押数量'}
+              type="number"
+              fullWidth
+              variant="outlined"
+              value={stakingAction === 'stake' ? stakeAmount : unstakeAmount}
+              onChange={(e) => stakingAction === 'stake' ? 
+                setStakeAmount(e.target.value) : 
+                setUnstakeAmount(e.target.value)
+              }
+              InputProps={{
+                endAdornment: <InputAdornment position="end">TEAM</InputAdornment>,
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': {
+                    borderColor: alpha(theme.palette.primary.main, 0.3),
+                  },
+                  '&:hover fieldset': {
+                    borderColor: alpha(theme.palette.primary.main, 0.5),
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: theme.palette.primary.main,
+                  },
+                },
+                '& .MuiInputLabel-root': {
+                  color: alpha(theme.palette.primary.main, 0.8),
+                },
+                '& .MuiInputBase-input': {
+                  color: '#fff',
+                },
+              }}
+            />
+          )}
+          
+          {stakingAction === 'claim' && (
+            <Box sx={{ textAlign: 'center', py: 2 }}>
+              <Typography variant="h5" sx={{ color: '#fff', mb: 2 }}>
+                {stats.stakingRewards} TEAM
+              </Typography>
+              <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                您当前可领取的质押分红数量
+              </Typography>
+            </Box>
+          )}
+          
+          {stakingAction === 'stake' && (
+            <Typography variant="body2" sx={{ mt: 2, color: alpha('#fff', 0.7) }}>
+              质押治理代币可以获得分红收益，但如果您有借款违约，将会被惩罚。
+            </Typography>
+          )}
+          
+          {stakingAction === 'unstake' && (
+            <Typography variant="body2" sx={{ mt: 2, color: alpha('#fff', 0.7) }}>
+              解除质押后将无法获得分红，且可能影响您的信用评分和借款额度。
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button 
+            onClick={() => setStakingDialogOpen(false)}
+            sx={{ 
+              color: alpha('#fff', 0.7),
+              '&:hover': {
+                color: '#fff',
+                backgroundColor: alpha('#fff', 0.1)
+              }
+            }}
+          >
+            取消
+          </Button>
+          <Button 
+            onClick={handleStakingAction}
+            variant="contained"
+            disabled={stakingLoading || 
+              (stakingAction === 'stake' && (!stakeAmount || parseFloat(stakeAmount) <= 0)) ||
+              (stakingAction === 'unstake' && (!unstakeAmount || parseFloat(unstakeAmount) <= 0)) ||
+              (stakingAction === 'claim' && stats.stakingRewards <= 0)
+            }
+            sx={{
+              borderRadius: theme.shape.borderRadius,
+              background: `linear-gradient(90deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
+              '&:hover': {
+                background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
+                boxShadow: `0 0 15px ${alpha(theme.palette.primary.main, 0.5)}`
+              }
+            }}
+          >
+            {stakingLoading ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              stakingAction === 'stake' ? '确认质押' : 
+              stakingAction === 'unstake' ? '确认解除' : 
+              '领取分红'
+            )}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

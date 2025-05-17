@@ -3,29 +3,28 @@ import {
   Box,
   Container,
   Typography,
-  Card,
-  CardContent,
-  CardMedia,
   Button,
   TextField,
-  CircularProgress,
-  Alert,
-  Stack,
+  Card,
+  CardContent,
   Grid,
-  Paper,
   Divider,
-  Chip,
+  Alert,
+  CircularProgress,
   Fade,
+  Tabs,
+  Tab,
   useTheme,
   alpha,
+  Stack,
   keyframes,
   LinearProgress,
-  Tab,
-  Tabs,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useWallet } from '../hooks/useWallet';
 import TeamIconImage from '../components/TeamIconImage';
+// 导入信用评分相关功能
+import { useCreditScore } from '../contracts/creditScore';
 import {
   TechCard,
   DataCard,
@@ -51,6 +50,11 @@ interface CreditScoreResult {
     activity: number;
     governanceTokens: number;
   };
+  // 添加与因素相同的属性，为了兼容现有代码
+  tokenStaking: number;
+  aiScore: number;
+  activity: number;
+  governanceTokens: number;
 }
 
 interface ScoringFactor {
@@ -135,13 +139,21 @@ const FactorBar = styled(Box)(({ theme }) => ({
 
 const CreditScore: React.FC = () => {
   const theme = useTheme();
-  const { address, connectWallet } = useWallet();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<CreditScoreResult | null>(null);
+  const { address, isConnected } = useWallet();
   const [inputAddress, setInputAddress] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<CreditScoreResult | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
   const [tabValue, setTabValue] = useState(0);
+  
+  // 使用信用评分hook
+  const { 
+    creditScore, 
+    loading: creditScoreLoading, 
+    error: creditScoreError, 
+    queryCreditScore 
+  } = useCreditScore();
 
   useEffect(() => {
     if (address) {
@@ -149,7 +161,7 @@ const CreditScore: React.FC = () => {
     }
   }, [address]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!inputAddress) {
@@ -165,48 +177,38 @@ const CreditScore: React.FC = () => {
     setLoading(true);
     setError('');
     
-    // 模拟API调用
-    setTimeout(() => {
-      try {
-        // 生成随机评分数据
-        const score = Math.floor(Math.random() * 30) + 70;
-        let level = '';
-        
-        if (score >= 90) {
-          level = '卓越';
-        } else if (score >= 80) {
-          level = '优秀';
-        } else if (score >= 70) {
-          level = '良好';
-        } else {
-          level = '一般';
-        }
-        
-        const tokenStaking = Math.floor(Math.random() * 50) + 50;
-        const aiScore = Math.floor(Math.random() * 50) + 50;
-        const activity = Math.floor(Math.random() * 50) + 50;
-        const governanceTokens = Math.floor(Math.random() * 50) + 50;
-        
-        setResult({
-          score,
-          level,
+    try {
+      const scoreResult = await queryCreditScore(inputAddress);
+      
+      if (scoreResult) {
+        const mockResult: CreditScoreResult = {
+          score: scoreResult.score,
+          level: scoreResult.level,
           factors: {
-            tokenStaking,
-            aiScore,
-            activity,
-            governanceTokens
-          }
-        });
+            tokenStaking: scoreResult.factors.tokenStaking,
+            aiScore: scoreResult.factors.aiScore,
+            activity: scoreResult.factors.activity,
+            governanceTokens: scoreResult.factors.governanceTokens
+          },
+          tokenStaking: scoreResult.factors.tokenStaking,
+          aiScore: scoreResult.factors.aiScore,
+          activity: scoreResult.factors.activity,
+          governanceTokens: scoreResult.factors.governanceTokens
+        };
         
-        setLoading(false);
+        setResult(mockResult);
         setScanComplete(true);
-      } catch (err) {
-        setError('获取信用评分时出错');
-        setLoading(false);
+      } else {
+        setError('获取信用评分失败，请稍后再试');
       }
-    }, 2000);
+    } catch (err: any) {
+      console.error('查询信用评分失败:', err);
+      setError(err.message || '查询信用评分失败');
+    } finally {
+      setLoading(false);
+    }
   };
-  
+
   // 获取评分等级对应的颜色
   const getLevelColor = (level: string) => {
     switch (level) {
@@ -302,149 +304,202 @@ const CreditScore: React.FC = () => {
             </Box>
             
             <Grid container spacing={4} justifyContent="center">
-              {/* 左侧：介绍和查询表单 */}
-              <Grid size={{ xs: 12, md: 4 }}>
-                <Stack spacing={4}>
-                  <DataCard>
-                    <CardContent sx={{ p: 4 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <TeamIconImage size={28} color="primary" sx={{ mr: 1 }} />
-                        <NeonText>
-                          <Typography variant="h5" component="h2" fontWeight="600" sx={{ color: '#fff' }}>
-                            信用评分查询
-                          </Typography>
-                        </NeonText>
-                      </Box>
-                      
-                      <ScanEffect>
-                        <Typography variant="body1" paragraph sx={{ 
-                          borderLeft: `2px solid ${theme.palette.primary.main}`,
-                          pl: 2,
-                          py: 1,
-                          background: alpha(theme.palette.background.paper, 0.3),
+            {/* 左侧：介绍和查询表单 */}
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Stack spacing={4}>
+                <DataCard sx={{ 
+                  boxShadow: `0 8px 32px 0 ${alpha(theme.palette.primary.main, 0.2)}`,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: `0 12px 36px 0 ${alpha(theme.palette.primary.main, 0.3)}`,
+                    transform: 'translateY(-5px)'
+                  }
+                }}>
+                  <CardContent sx={{ p: 4 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                      <PulseContainer>
+                        <TeamIconImage size={32} color="primary" sx={{ mr: 2 }} />
+                      </PulseContainer>
+                      <NeonText>
+                        <Typography variant="h5" component="h2" fontWeight="700" sx={{ 
                           color: '#fff',
+                          textShadow: `0 0 8px ${theme.palette.primary.main}`,
+                          letterSpacing: '0.5px'
                         }}>
-                          我们的AI信用评分系统基于您的链上行为、资产持有和交互历史，为您提供全面的信用评估。
+                          信用评分查询
                         </Typography>
-                      </ScanEffect>
-                      
-                      <Box sx={{ position: 'relative', mt: 3 }}>
-                        <form onSubmit={handleSubmit}>
-                          <TextField
-                            fullWidth
-                            label="输入钱包地址"
-                            variant="outlined"
-                            value={inputAddress}
-                            onChange={(e) => setInputAddress(e.target.value)}
-                            placeholder="0x..."
-                            sx={{ 
-                              mb: 3,
-                              '& .MuiOutlinedInput-root': {
-                                borderRadius: 2,
-                                border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                                background: alpha(theme.palette.background.default, 0.5),
-                                '&:hover': {
-                                  boxShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.3)}`
-                                },
-                                '&.Mui-focused': {
-                                  boxShadow: `0 0 15px ${alpha(theme.palette.primary.main, 0.5)}`
-                                }
-                              },
-                              '& .MuiInputLabel-root': {
-                                color: alpha(theme.palette.primary.main, 0.7)
-                              },
-                              '& .MuiInputBase-input': {
-                                color: '#fff'
-                              }
-                            }}
-                          />
-                          
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            fullWidth
-                            type="submit"
-                            disabled={loading}
-                            sx={{ 
-                              py: 1.5,
+                      </NeonText>
+                    </Box>
+                    
+                    <ScanEffect>
+                      <Typography variant="body1" paragraph sx={{ 
+                        borderLeft: `3px solid ${theme.palette.primary.main}`,
+                        pl: 2,
+                        py: 1,
+                        background: alpha(theme.palette.background.paper, 0.3),
+                        color: '#fff',
+                        borderRadius: '0 8px 8px 0',
+                        boxShadow: `0 4px 12px ${alpha(theme.palette.common.black, 0.1)}`
+                      }}>
+                        我们的AI信用评分系统基于您的链上行为、资产持有和交互历史，为您提供全面的信用评估。高评分可获得更优惠的借贷条件。
+                      </Typography>
+                    </ScanEffect>
+                    
+                    <Box sx={{ position: 'relative', mt: 4 }}>
+                      <form onSubmit={handleSubmit}>
+                        <TextField
+                          fullWidth
+                          label="输入钱包地址"
+                          variant="outlined"
+                          value={inputAddress}
+                          onChange={(e) => setInputAddress(e.target.value)}
+                          placeholder="0x..."
+                          sx={{ 
+                            mb: 3,
+                            '& .MuiOutlinedInput-root': {
                               borderRadius: 2,
-                              position: 'relative',
-                              overflow: 'hidden',
-                              background: `linear-gradient(90deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                              background: alpha(theme.palette.background.default, 0.5),
                               '&:hover': {
-                                background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
-                                boxShadow: `0 0 15px ${alpha(theme.palette.primary.main, 0.5)}`
+                                boxShadow: `0 0 10px ${alpha(theme.palette.primary.main, 0.3)}`
                               },
-                              '&::after': {
-                                content: '""',
-                                position: 'absolute',
-                                top: 0,
-                                left: '-100%',
-                                width: '100%',
-                                height: '100%',
-                                background: `linear-gradient(90deg, transparent, ${alpha(theme.palette.common.white, 0.2)}, transparent)`,
-                                animation: `${scanEffect} 1.5s linear infinite`,
+                              '&.Mui-focused': {
+                                boxShadow: `0 0 15px ${alpha(theme.palette.primary.main, 0.5)}`
                               }
-                            }}
-                          >
-                            {loading ? (
-                              <CircularProgress size={24} color="inherit" />
-                            ) : (
-                              "查询信用评分"
-                            )}
-                          </Button>
-                        </form>
-                      </Box>
-                      
-                      {error && (
-                        <Alert severity="error" sx={{ mt: 2 }}>
-                          {error}
-                        </Alert>
-                      )}
-                    </CardContent>
-                  </DataCard>
-                  
-                  <DataCard>
-                    <CardContent sx={{ p: 4 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <TeamIconImage size={28} color="secondary" sx={{ mr: 1 }} />
-                        <NeonText>
-                          <Typography variant="h5" component="h2" fontWeight="600" sx={{ color: '#fff' }}>
-                            评分优势
-                          </Typography>
-                        </NeonText>
-                      </Box>
-                      
-                      <Grid container spacing={2} sx={{ mt: 1 }}>
-                        <Grid size={{ xs: 12 }}>
-                          <TechPanel>
-                            <Typography variant="subtitle1" fontWeight="600" sx={{ color: '#fff' }}>
-                              去中心化信用
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#fff' }}>
-                              基于链上数据的客观评估，无需中心化信用机构
-                            </Typography>
-                          </TechPanel>
-                        </Grid>
+                            },
+                            '& .MuiInputLabel-root': {
+                              color: alpha(theme.palette.primary.main, 0.7)
+                            },
+                            '& .MuiInputBase-input': {
+                              color: '#fff'
+                            }
+                          }}
+                        />
                         
-                        <Grid size={{ xs: 12 }}>
-                          <TechPanel>
-                            <Typography variant="subtitle1" fontWeight="600" sx={{ color: '#fff' }}>
-                              AI驱动分析
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: '#fff' }}>
-                              先进AI算法分析您的链上行为模式和交易历史
-                            </Typography>
-                          </TechPanel>
-                        </Grid>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          fullWidth
+                          type="submit"
+                          disabled={loading}
+                          sx={{ 
+                            py: 1.5,
+                            borderRadius: 2,
+                            position: 'relative',
+                            overflow: 'hidden',
+                            background: `linear-gradient(90deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
+                            '&:hover': {
+                              background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
+                              boxShadow: `0 0 15px ${alpha(theme.palette.primary.main, 0.5)}`
+                            },
+                            '&::after': {
+                              content: '""',
+                              position: 'absolute',
+                              top: 0,
+                              left: '-100%',
+                              width: '100%',
+                              height: '100%',
+                              background: `linear-gradient(90deg, transparent, ${alpha(theme.palette.common.white, 0.2)}, transparent)`,
+                              animation: `${scanEffect} 1.5s linear infinite`,
+                            }
+                          }}
+                        >
+                          {loading ? (
+                            <CircularProgress size={24} color="inherit" />
+                          ) : (
+                            "查询信用评分"
+                          )}
+                        </Button>
+                      </form>
+                    </Box>
+                    
+                    {error && (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        {error}
+                      </Alert>
+                    )}
+                  </CardContent>
+                </DataCard>
+                
+                <DataCard sx={{ 
+                  background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.6)}, ${alpha(theme.palette.background.paper, 0.3)})`,
+                  backdropFilter: 'blur(10px)',
+                }}>
+                  <CardContent sx={{ p: 4 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                      <TeamIconImage size={28} color="secondary" sx={{ mr: 1 }} />
+                      <NeonText>
+                        <Typography variant="h5" component="h2" fontWeight="600" sx={{ 
+                          color: '#fff',
+                          background: `linear-gradient(90deg, ${theme.palette.secondary.main}, ${theme.palette.primary.main})`,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                        }}>
+                          评分优势
+                        </Typography>
+                      </NeonText>
+                    </Box>
+                    
+                    <Grid container spacing={2} sx={{ mt: 1 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <TechPanel sx={{ 
+                          height: '100%',
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            transform: 'translateY(-5px)',
+                            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, 0.2)}`
+                          }
+                        }}>
+                          <Typography variant="subtitle1" fontWeight="600" sx={{ color: '#fff' }}>
+                            去中心化信用
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#fff' }}>
+                            基于链上数据的客观评估，无需中心化信用机构
+                          </Typography>
+                        </TechPanel>
                       </Grid>
-                    </CardContent>
-                  </DataCard>
-                </Stack>
-              </Grid>
+                      
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <TechPanel sx={{ 
+                          height: '100%',
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            transform: 'translateY(-5px)',
+                            boxShadow: `0 8px 20px ${alpha(theme.palette.common.black, 0.2)}`
+                          }
+                        }}>
+                          <Typography variant="subtitle1" fontWeight="600" sx={{ color: '#fff' }}>
+                            AI驱动分析
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#fff' }}>
+                            先进AI算法分析您的链上行为模式和交易历史
+                          </Typography>
+                        </TechPanel>
+                      </Grid>
+                      
+                      <Grid size={{ xs: 12 }}>
+                        <TechPanel sx={{ 
+                          mt: 2,
+                          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.3)}, ${alpha(theme.palette.secondary.dark, 0.3)})`,
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                        }}>
+                          <Typography variant="subtitle1" fontWeight="600" sx={{ color: theme.palette.primary.light }}>
+                            实时更新
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#fff' }}>
+                            评分系统实时监控链上活动，动态调整您的信用评分，确保评估始终反映最新状态
+                          </Typography>
+                        </TechPanel>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </DataCard>
+              </Stack>
+            </Grid>
               
               {/* 右侧：评分结果 */}
-              <Grid size={{ xs: 12, md: 8 }}>
+              <Grid size={{ xs: 12, md: 7 }}>
                 {scanComplete && result && (
                   <Fade in={scanComplete} timeout={1000}>
                     <Box>

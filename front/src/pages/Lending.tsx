@@ -3,31 +3,32 @@ import {
   Box,
   Container,
   Typography,
-  Card,
-  CardContent,
   Button,
-  TextField,
-  Alert,
   Stepper,
   Step,
   StepLabel,
+  Card,
+  CardContent,
+  TextField,
+  Grid,
+  Divider,
+  Alert,
   CircularProgress,
+  Paper,
+  Fade,
+  Tabs,
+  Tab,
+  InputAdornment,
+  Chip,
+  useTheme,
+  Avatar,
   List,
   ListItem,
   ListItemText,
-  InputAdornment,
   Stack,
-  Grid,
-  Paper,
-  Divider,
-  Chip,
-  Fade,
-  Slide,
-  useTheme,
   alpha,
   IconButton,
   Tooltip,
-  Avatar,
   Slider,
   LinearProgress,
   Rating,
@@ -37,6 +38,10 @@ import {
   DialogActions,
   Snackbar,
 } from '@mui/material';
+import { ethers } from 'ethers';
+// 导入智能合约相关hooks
+import { useLending, useTokens, useBlacklist } from '../contracts/hooks';
+import TeamIconImage from '../components/TeamIconImage';
 import { styled } from '@mui/material/styles';
 import { useWallet } from '../hooks/useWallet';
 import {
@@ -143,6 +148,10 @@ interface LoanInfo {
   maxAmount: number;
   dueDate: string;
   interestRate: number;
+  // 新增字段
+  riskPoolInterest: number; // 风险池分配利息
+  lenderInterest: number; // 借款人分配利息
+  collateralAmount: number; // 抵押品金额
 }
 
 const Lending: React.FC = () => {
@@ -180,10 +189,64 @@ const Lending: React.FC = () => {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
+  // 获取信用评分和最大借款额度
+  const getCreditLimitInfo = () => {
+    // 根据钱包地址获取信用评分
+    // 在实际应用中，这里应该调用API获取真实的信用评分
+    // 这里模拟不同地址有不同的信用评分
+    const walletAddress = address || '';
+    const lastChar = walletAddress.slice(-1).toLowerCase();
+    
+    // 根据地址最后一位字符生成不同的信用评分
+    let creditScore = 75; // 默认信用评分
+    
+    if (lastChar >= '0' && lastChar <= '9') {
+      // 如果最后一位是数字，根据数字大小调整信用评分
+      creditScore = 70 + parseInt(lastChar) * 3;
+    } else if (lastChar >= 'a' && lastChar <= 'f') {
+      // 如果最后一位是字母 a-f，给予更高的信用评分
+      creditScore = 85 + (lastChar.charCodeAt(0) - 'a'.charCodeAt(0)) * 2;
+    }
+    
+    // 确保信用评分在有效范围内
+    creditScore = Math.min(Math.max(creditScore, 60), 100);
+    
+    // 根据信用评分计算最大借款额度
+    // 信用评分越高，可借额度越高
+    // 使用非线性计算方式，使高信用评分获得更高的额度提升
+    let maxAmount = 0;
+    
+    if (creditScore < 70) {
+      // 信用评分较低，额度较小
+      maxAmount = Math.round((creditScore - 60) * 300);
+    } else if (creditScore < 80) {
+      // 中等信用评分
+      maxAmount = Math.round(3000 + (creditScore - 70) * 400);
+    } else if (creditScore < 90) {
+      // 良好信用评分
+      maxAmount = Math.round(7000 + (creditScore - 80) * 500);
+    } else {
+      // 优秀信用评分
+      maxAmount = Math.round(12000 + (creditScore - 90) * 800);
+    }
+    
+    return { creditScore, maxAmount };
+  };
+  
+  // 从智能合约中导入借款相关功能
+  const { borrow, interestRate } = useLending();
+  const { balances, fetchBalances } = useTokens();
+  const { isBlacklisted } = useBlacklist();
+  
   // 计算借款详情
   const handleCalculateLoan = async () => {
     if (!isConnected) {
       setError('请先连接钱包后再申请借款');
+      return;
+    }
+    
+    if (isBlacklisted) {
+      setError('您的地址在黑名单中，无法申请借款');
       return;
     }
     
@@ -194,6 +257,22 @@ const Lending: React.FC = () => {
 
     if (parseInt(loanAmount) <= 0) {
       setError('借款金额必须大于0');
+      return;
+    }
+    
+    // 获取信用额度信息
+    const { maxAmount } = getCreditLimitInfo();
+    
+    // 验证借款金额不能超过最大额度
+    if (parseInt(loanAmount) > maxAmount) {
+      setError(`借款金额不能超过您的可借额度 ${maxAmount} USDC`);
+      return;
+    }
+    
+    // 检查抵押品余额
+    const requiredCollateral = (parseInt(loanAmount) * 150) / 100; // 150% 抵押率
+    if (parseFloat(balances.tokenB) < requiredCollateral) {
+      setError(`抵押品余额不足，需要至少 ${requiredCollateral} ETH`);
       return;
     }
 
@@ -228,6 +307,13 @@ const Lending: React.FC = () => {
       const dueDate = new Date(currentDate.setDate(currentDate.getDate() + duration));
       const formattedDueDate = dueDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
       
+      // 计算利息分配 - 80%给借款人，20%进入风险池
+      const riskPoolInterest = totalInterest * 0.2; // 20%进入风险池
+      const lenderInterest = totalInterest * 0.8; // 80%给借款人
+      
+      // 计算抵押品金额 - 150%的抵押率
+      const collateralAmount = amount * 1.5;
+      
       const mockLoanInfo: LoanInfo = {
         amount,
         duration,
@@ -237,7 +323,10 @@ const Lending: React.FC = () => {
         creditScore,
         maxAmount,
         dueDate: formattedDueDate,
-        interestRate: rate * 100 // 转换为百分比
+        interestRate: rate * 100, // 转换为百分比
+        riskPoolInterest,
+        lenderInterest,
+        collateralAmount
       };
       
       setLoanInfo(mockLoanInfo);
@@ -249,26 +338,41 @@ const Lending: React.FC = () => {
     }
   };
 
-  // 确认借款
+  // 确认借款 - 链上操作
   const handleConfirmLoan = async () => {
     if (!loanInfo) return;
+    if (!isConnected) {
+      setError('请先连接钱包');
+      return;
+    }
     
     setLoading(true);
     setError('');
     
     try {
-      // 模拟API延迟
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 计算抵押品金额 - 需要150%的抵押率
+      const collateralAmount = (parseFloat(loanInfo.amount.toString()) * 1.5).toFixed(6);
       
-      // 模拟交易哈希
-      const hash = '0x' + Array.from({length: 64}, () => 
-        Math.floor(Math.random() * 16).toString(16)).join('');
+      // 计算借款期限（秒）
+      const durationInSeconds = loanInfo.duration * 24 * 60 * 60; // 天数转换为秒
       
-      setTransactionHash(hash);
+      // 调用智能合约进行借款
+      const tx = await borrow(
+        loanInfo.amount.toString(), 
+        collateralAmount, 
+        durationInSeconds
+      );
+      
+      // 设置交易哈希
+      setTransactionHash(tx.hash);
       setCompleted(true);
       setActiveStep(2);
-    } catch (err) {
-      setError('借款交易失败');
+      
+      // 更新代币余额
+      await fetchBalances();
+    } catch (err: any) {
+      console.error('借款失败:', err);
+      setError(err.message || '借款交易失败');
     } finally {
       setLoading(false);
     }
@@ -336,6 +440,38 @@ const Lending: React.FC = () => {
                   </Typography>
                 </Box>
                 
+                {isConnected && (
+                  <Box sx={{ 
+                    mb: 3, 
+                    p: 2, 
+                    borderRadius: 2, 
+                    background: alpha(theme.palette.primary.main, 0.1),
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                  }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theme.palette.primary.main, mb: 1 }}>
+                      您的信用状况
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 6 }}>
+                        <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                          信用评分
+                        </Typography>
+                        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
+                          {getCreditLimitInfo().creditScore}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 6 }}>
+                        <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                          可借额度
+                        </Typography>
+                        <Typography variant="h6" sx={{ color: theme.palette.success.main, fontWeight: 600 }}>
+                          {getCreditLimitInfo().maxAmount} USDC
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                )}
+                
                 <Grid container spacing={3}>
                   <Grid size={{ xs: 12, md: 6 }}>
                     <Typography variant="subtitle1" fontWeight="500" gutterBottom>
@@ -345,7 +481,20 @@ const Lending: React.FC = () => {
                       fullWidth
                       type="number"
                       value={loanAmount}
-                      onChange={(e) => setLoanAmount(e.target.value)}
+                      onChange={(e) => {
+                        // 获取信用额度信息
+                        const { maxAmount } = getCreditLimitInfo();
+                        
+                        // 验证输入的金额
+                        const amount = parseInt(e.target.value);
+                        if (amount > maxAmount) {
+                          setError(`借款金额不能超过您的可借额度 ${maxAmount} USDC`);
+                        } else {
+                          setError('');
+                        }
+                        
+                        setLoanAmount(e.target.value);
+                      }}
                       placeholder="输入借款金额"
                       InputProps={{
                         startAdornment: <InputAdornment position="start"><TeamLogo fontSize="small" /></InputAdornment>,
@@ -356,6 +505,8 @@ const Lending: React.FC = () => {
                         },
                         mb: 2
                       }}
+                      helperText={error ? error : ''}
+                      error={!!error}
                     />
                     
                     {isConnected ? (
@@ -746,67 +897,197 @@ const Lending: React.FC = () => {
     );
   };
   
+  // 获取用户的借款历史
+  const { loans, loading: loansLoading, repay } = useLending();
+  
+  // 格式化时间戳
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
   // 渲染第三步 - 完成借贷
   const renderStep3 = () => (
     <Fade in={activeStep === 2} timeout={800}>
-      <Box sx={{ textAlign: 'center', py: 4 }}>
-        <GlassCard sx={{ maxWidth: 600, mx: 'auto' }}>
-          <CardContent sx={{ p: 5 }}>
-            <Box sx={{ mb: 4 }}>
-              <Avatar 
-                sx={{ 
-                  width: 80, 
-                  height: 80, 
-                  bgcolor: alpha(theme.palette.success.main, 0.1),
-                  color: theme.palette.success.main,
-                  mx: 'auto',
-                  mb: 3
-                }}
-              >
-                <CheckCircleIcon sx={{ fontSize: 40 }} />
-              </Avatar>
-              
-              <Typography variant="h4" component="h2" fontWeight="700" gutterBottom>
-                借款成功！
-              </Typography>
-              
-              <Typography variant="body1" color="text.secondary" paragraph>
-                您的借款请求已经处理成功，资金将在几分钟内到账。
-              </Typography>
+      <Box sx={{ py: 4 }}>
+        <GlassCard sx={{ mb: 4 }}>
+          <CardContent sx={{ p: 4, textAlign: 'center' }}>
+            <Box sx={{ mb: 3 }}>
+              <TeamIconImage size={60} color="success" />
             </Box>
+            <Typography variant="h4" component="h2" fontWeight="700" sx={{ mb: 2, color: theme.palette.success.main }}>
+              借款成功！
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 3, color: '#fff' }}>
+              您的借款已经成功处理。资金将在几分钟内到账。
+            </Typography>
             
             {transactionHash && (
-              <Box sx={{ mb: 4, p: 3, bgcolor: alpha(theme.palette.background.paper, 0.5), borderRadius: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              <Box sx={{ mb: 3, p: 2, background: alpha(theme.palette.background.paper, 0.3), borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: '#fff' }}>
                   交易哈希
                 </Typography>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    wordBreak: 'break-all',
-                    fontFamily: 'monospace'
-                  }}
-                >
+                <Typography variant="body2" sx={{ wordBreak: 'break-all', color: '#fff' }}>
                   {transactionHash}
                 </Typography>
               </Box>
             )}
             
-            <Box sx={{ mt: 4 }}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleReset}
-                sx={{
-                  py: 1.2,
-                  px: 3,
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                }}
-              >
-                申请新借款
-              </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleReset}
+              sx={{ mt: 2 }}
+            >
+              返回借款页面
+            </Button>
+          </CardContent>
+        </GlassCard>
+        
+        {/* 借款历史记录 */}
+        <GlassCard>
+          <CardContent sx={{ p: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <TeamIconImage size={28} color="primary" sx={{ mr: 1 }} />
+              <Typography variant="h5" component="h2" fontWeight="600" sx={{ color: '#fff' }}>
+                借款历史
+              </Typography>
             </Box>
+            
+            {loansLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : loans && loans.length > 0 ? (
+              <Grid container spacing={2}>
+                {loans.map((loan: any, index: number) => (
+                  <Grid key={index} size={{ xs: 12, md: 6 }}>
+                    <Box sx={{ 
+                      p: 2, 
+                      borderRadius: 2, 
+                      background: alpha(theme.palette.background.paper, 0.3),
+                      border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                      mb: 2 
+                    }}>
+                      <Typography variant="subtitle1" fontWeight="600" sx={{ color: '#fff', mb: 1 }}>
+                        借款 #{index + 1}
+                      </Typography>
+                      <Grid container spacing={1}>
+                        <LoanDetailItem>
+                          <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                            借款利率
+                          </Typography>
+                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                            {loan.interestRate.toFixed(2)}%
+                          </Typography>
+                        </LoanDetailItem>
+                        
+                        <LoanDetailItem>
+                          <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                            利息总额
+                          </Typography>
+                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                            {formatAmount(loan.totalInterest)} USDC
+                          </Typography>
+                        </LoanDetailItem>
+                        
+                        <LoanDetailItem>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                              借款人分配利息 (80%)
+                            </Typography>
+                            <Tooltip title="利息的80%分配给借款人">
+                              <InfoIcon fontSize="small" sx={{ ml: 1, color: alpha('#fff', 0.5) }} />
+                            </Tooltip>
+                          </Box>
+                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                            {formatAmount(loan.lenderInterest)} USDC
+                          </Typography>
+                        </LoanDetailItem>
+                        
+                        <LoanDetailItem>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                              风险池分配利息 (20%)
+                            </Typography>
+                            <Tooltip title="利息的20%进入风险池，用于保护借款人">
+                              <InfoIcon fontSize="small" sx={{ ml: 1, color: alpha('#fff', 0.5) }} />
+                            </Tooltip>
+                          </Box>
+                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                            {formatAmount(loan.riskPoolInterest)} USDC
+                          </Typography>
+                        </LoanDetailItem>
+                        
+                        <LoanDetailItem>
+                          <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                            还款总额
+                          </Typography>
+                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                            {formatAmount(loan.totalRepayment)} USDC
+                          </Typography>
+                        </LoanDetailItem>
+                        
+                        <LoanDetailItem>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                              抵押品金额 (150%)
+                            </Typography>
+                            <Tooltip title="借款需要150%的抵押率以确保资金安全">
+                              <InfoIcon fontSize="small" sx={{ ml: 1, color: alpha('#fff', 0.5) }} />
+                            </Tooltip>
+                          </Box>
+                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
+                            {formatAmount(loan.collateralAmount)} ETH
+                          </Typography>
+                        </LoanDetailItem>
+                        <Grid size={{ xs: 6 }}>
+                          <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                            状态
+                          </Typography>
+                          <Typography variant="body1" sx={{ 
+                            color: loan.liquidated ? 
+                              theme.palette.success.main : 
+                              new Date().getTime() > loan.dueTime * 1000 ? 
+                                theme.palette.error.main : 
+                                theme.palette.warning.main 
+                          }}>
+                            {loan.liquidated ? 
+                              '已还款' : 
+                              new Date().getTime() > loan.dueTime * 1000 ? 
+                                '已逃期' : 
+                                '未还款'}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                      
+                      {!loan.liquidated && (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          onClick={() => repay(index)}
+                          sx={{ mt: 2 }}
+                          fullWidth
+                        >
+                          还款
+                        </Button>
+                      )}
+                    </Box>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Typography variant="body1" sx={{ textAlign: 'center', color: '#fff', my: 4 }}>
+                暂无借款记录
+              </Typography>
+            )}
           </CardContent>
         </GlassCard>
       </Box>

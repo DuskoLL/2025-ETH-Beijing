@@ -1,6 +1,6 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
-// WTEYE API服务接口
+// Dusko API服务接口
 export interface WashTradeStatus {
   detected: boolean;
   penalty: number;

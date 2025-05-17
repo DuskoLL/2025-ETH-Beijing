@@ -1,5 +1,5 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { WashTradeStatus } from './washTradeService';
+import { WashTradeStatus, washTradeApi } from './washTradeService';
 
 // ETH信用评分系统的响应类型
 export interface EthCreditScore {
@@ -43,9 +43,6 @@ export const combinedScoreApi = createApi({
     getCombinedScore: builder.query<CombinedScoreResult, string>({
       queryFn: async (address, { dispatch, getState }, extraOptions, baseQuery) => {
         try {
-          // 导入其他API
-          const { washTradeApi } = await import('./washTradeService');
-          
           // 1. 获取ETH信用评分
           const ethScoreResponse = await baseQuery({
             url: '/eth/credit-score',

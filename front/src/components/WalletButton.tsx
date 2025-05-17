@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Button, 
   Typography, 
@@ -7,22 +7,36 @@ import {
   MenuItem, 
   Divider,
   Tooltip,
-  CircularProgress
+  CircularProgress,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
+  alpha
 } from '@mui/material';
 import { 
   AccountBalanceWallet as WalletIcon,
   ContentCopy as CopyIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  Refresh as RefreshIcon,
+  ArrowForward as ArrowForwardIcon
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import walletService from '../services/walletService';
 
 const WalletButton: React.FC = () => {
-  const { address, isConnected, balance, chainId } = useSelector((state: RootState) => state.wallet);
+  const { address, isConnected, balance, chainId, tokenBalances, isLoadingTokens } = useSelector((state: RootState) => state.wallet);
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+  
+  // 组件加载时获取代币余额
+  useEffect(() => {
+    if (isConnected && address) {
+      walletService.fetchTokenBalances();
+    }
+  }, [isConnected, address]);
   
   const open = Boolean(anchorEl);
   
@@ -151,16 +165,68 @@ const WalletButton: React.FC = () => {
           </Box>
           
           <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              稳定币余额
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
-              <Typography variant="body2">
-                {(parseFloat(balance) * 1800).toFixed(2)} USDC
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="body2" color="text.secondary">
+                代币余额
               </Typography>
-              <Button size="small" onClick={refreshBalance}>
-                刷新
+              <Button 
+                size="small" 
+                startIcon={<RefreshIcon fontSize="small" />}
+                onClick={refreshBalance}
+                disabled={isLoadingTokens}
+              >
+                {isLoadingTokens ? '加载中...' : '刷新'}
               </Button>
+            </Box>
+            
+            {isLoadingTokens ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : tokenBalances && tokenBalances.length > 0 ? (
+              <List dense sx={{ mt: 1, p: 0 }}>
+                {/* 显示真实的代币余额 */}
+                {tokenBalances.map((token) => (
+                  <ListItem key={token.symbol} sx={{ px: 0, py: 0.5 }}>
+                    <ListItemText 
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Chip 
+                            label={token.symbol} 
+                            size="small" 
+                            sx={{ 
+                              mr: 1, 
+                              fontSize: '0.7rem',
+                              height: 20,
+                              bgcolor: alpha('#1976d2', 0.1),
+                              color: '#1976d2',
+                              '& .MuiChip-label': { px: 1 }
+                            }} 
+                          />
+                          <Typography variant="body2">{token.name}</Typography>
+                        </Box>
+                      }
+                      secondary={
+                        <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
+                          {parseFloat(token.formattedBalance).toFixed(6)} {token.symbol}
+                        </Typography>
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Box sx={{ mt: 1, p: 1, bgcolor: alpha('#f5f5f5', 0.5), borderRadius: 1 }}>
+                <Typography variant="body2" color="text.secondary" align="center">
+                  没有发现代币余额
+                </Typography>
+              </Box>
+            )}
+            
+            <Box sx={{ mt: 1, p: 1, bgcolor: alpha('#f5f5f5', 0.5), borderRadius: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                ETH余额: {parseFloat(balance).toFixed(6)} ETH
+              </Typography>
             </Box>
           </Box>
           

@@ -28,6 +28,14 @@ import {
   IconButton,
   Tooltip,
   Avatar,
+  Slider,
+  LinearProgress,
+  Rating,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useWallet } from '../hooks/useWallet';
@@ -155,13 +163,13 @@ const Lending: React.FC = () => {
 
   // 计算借款详情
   const handleCalculateLoan = async () => {
-    if (!loanAmount || !loanDuration) {
-      setError('请填写借款金额和期限');
+    if (!loanAmount) {
+      setError('请填写借款金额');
       return;
     }
 
-    if (parseInt(loanAmount) <= 0 || parseInt(loanDuration) <= 0) {
-      setError('借款金额和期限必须大于0');
+    if (parseInt(loanAmount) <= 0) {
+      setError('借款金额必须大于0');
       return;
     }
 
@@ -258,6 +266,29 @@ const Lending: React.FC = () => {
       maximumFractionDigits: 2
     });
   };
+  
+  // 风险评估函数
+  const getRiskLevel = (amount: number): string => {
+    if (!loanInfo) return '低';
+    const maxAmount = loanInfo.maxAmount;
+    const ratio = amount / maxAmount;
+    
+    if (ratio < 0.3) return '低';
+    if (ratio < 0.6) return '中';
+    if (ratio < 0.8) return '高';
+    return '极高';
+  };
+  
+  const getRiskColor = (amount: number): 'success' | 'info' | 'warning' | 'error' => {
+    if (!loanInfo) return 'success';
+    const maxAmount = loanInfo.maxAmount;
+    const ratio = amount / maxAmount;
+    
+    if (ratio < 0.3) return 'success';
+    if (ratio < 0.6) return 'info';
+    if (ratio < 0.8) return 'warning';
+    return 'error';
+  };
 
   // 渲染第一步 - 填写借款信息
   const renderStep1 = () => (
@@ -291,12 +322,48 @@ const Lending: React.FC = () => {
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                        }
+                        },
+                        mb: 2
                       }}
                     />
-                    <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1, fontWeight: 500 }}>
-                      可借额度: {loanInfo ? formatAmount(loanInfo.maxAmount) : '5,000'} USDC
-                    </Typography>
+                    
+                    <Box sx={{ px: 1 }}>
+                      <Slider
+                        value={loanAmount ? parseFloat(loanAmount) : 0}
+                        onChange={(_, value) => setLoanAmount(value.toString())}
+                        min={100}
+                        max={loanInfo ? loanInfo.maxAmount : 5000}
+                        step={100}
+                        valueLabelDisplay="auto"
+                        valueLabelFormat={(value) => `${value} USDC`}
+                        sx={{
+                          color: theme.palette.primary.main,
+                          '& .MuiSlider-thumb': {
+                            '&:hover, &.Mui-focusVisible': {
+                              boxShadow: `0px 0px 0px 8px ${alpha(theme.palette.primary.main, 0.16)}`
+                            },
+                          }
+                        }}
+                      />
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                      <Typography variant="caption" color="primary" sx={{ fontWeight: 500 }}>
+                        可借额度: {loanInfo ? formatAmount(loanInfo.maxAmount) : '5,000'} USDC
+                      </Typography>
+                      
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                          风险等级:
+                        </Typography>
+                        <Chip 
+                          label={getRiskLevel(loanAmount ? parseFloat(loanAmount) : 0)} 
+                          size="small"
+                          color={getRiskColor(loanAmount ? parseFloat(loanAmount) : 0)}
+                          sx={{ height: 20, '& .MuiChip-label': { px: 1, py: 0.5, fontSize: '0.7rem' } }}
+                        />
+                      </Box>
+                    </Box>
                   </Grid>
                   
                   <Grid size={{ xs: 12, md: 6 }}>

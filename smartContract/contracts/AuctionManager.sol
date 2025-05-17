@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "./IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract AuctionManager is Ownable {
 
     IERC20 public tokenA;
-    
-    ERC20Burnable public tokenB;
+    IERC20 public tokenB;
     
     enum AuctionType { Collateral, Debt }
     
@@ -34,9 +32,9 @@ contract AuctionManager is Ownable {
     event BidPlaced(uint256 auctionId, address bidder, uint256 amount);
     event AuctionSettled(uint256 auctionId, address winner, uint256 amount);
     
-    constructor(address _tokenA, address _tokenB) {
+    constructor(address _tokenA, address _tokenB) Ownable(address(this)) {
         tokenA = IERC20(_tokenA);
-        tokenB = ERC20Burnable(_tokenB);
+        tokenB = IERC20(_tokenB);
     }
     
     function startAuction(address user, uint256 loanId, uint256 shortage) external onlyOwner {
@@ -113,7 +111,7 @@ contract AuctionManager is Ownable {
             emit AuctionSettled(auctionId, auction.highestBidder, auction.highestBid);
         } else {
             if (auction.auctionType == AuctionType.Debt) {
-                tokenB.burn(auction.amount);
+                tokenB.burn(auction.user,auction.amount);
             }
             emit AuctionSettled(auctionId, address(0), 0);
         }

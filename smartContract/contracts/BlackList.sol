@@ -6,6 +6,8 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract Blacklist is Ownable {
 
+    constructor() Ownable(msg.sender) {}
+
     using EnumerableSet for EnumerableSet.AddressSet;
 
     EnumerableSet.AddressSet private _blacklist;

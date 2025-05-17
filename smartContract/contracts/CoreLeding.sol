@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./IlendingPool.sol";
-import "./IBlacklist.sol";
-import "./IAuctionManager.sol";
+import "./IledingPool.sol";
+import "./Blacklist.sol";
+import "./AuctionManager.sol";
 
 contract CoreLending is Ownable {
     ILendingPool public lendingPool;

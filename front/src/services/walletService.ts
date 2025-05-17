@@ -36,50 +36,81 @@ export class WalletService {
   // 连接钱包
   public async connectWallet(): Promise<boolean> {
     try {
+      console.log('开始连接钱包...');
+      
       if (!this.isMetaMaskInstalled()) {
+        console.error('MetaMask未安装');
         alert('请安装MetaMask钱包插件');
         window.open('https://metamask.io/download/', '_blank');
         return false;
       }
+      
+      console.log('MetaMask已安装，window.ethereum:', window.ethereum);
 
-      // 创建provider
-      this.provider = new ethers.BrowserProvider(window.ethereum);
-      
-      // 请求用户连接
-      const accounts = await this.provider.send("eth_requestAccounts", []);
-      
-      if (accounts.length === 0) {
+      try {
+        // 创建provider
+        console.log('创建provider...');
+        this.provider = new ethers.BrowserProvider(window.ethereum);
+        console.log('provider创建成功:', this.provider);
+        
+        // 请求用户连接 - 使用更直接的方法
+        console.log('请求用户连接...');
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        console.log('获取到账户:', accounts);
+        
+        if (!accounts || accounts.length === 0) {
+          console.error('未获取到账户');
+          return false;
+        }
+
+        // 获取signer
+        console.log('获取signer...');
+        this.signer = await this.provider.getSigner();
+        console.log('signer获取成功:', this.signer);
+        
+        const address = await this.signer.getAddress();
+        console.log('获取到地址:', address);
+        
+        // 获取余额
+        console.log('获取余额...');
+        const balance = await this.provider.getBalance(address);
+        const formattedBalance = ethers.formatEther(balance);
+        console.log('余额:', formattedBalance, 'ETH');
+        
+        // 获取chainId
+        console.log('获取chainId...');
+        const network = await this.provider.getNetwork();
+        const chainId = network.chainId.toString();
+        console.log('链ID:', chainId);
+
+        // 更新Redux状态
+        console.log('更新Redux状态...');
+        store.dispatch(setWallet({
+          address,
+          balance: formattedBalance,
+          chainId,
+        }));
+
+        // 监听账户变化
+        console.log('设置账户变化监听器...');
+        window.ethereum.removeListener('accountsChanged', this.handleAccountsChanged);
+        window.ethereum.on('accountsChanged', this.handleAccountsChanged);
+        
+        // 监听链变化
+        console.log('设置链变化监听器...');
+        window.ethereum.removeListener('chainChanged', this.handleChainChanged);
+        window.ethereum.on('chainChanged', this.handleChainChanged);
+
+        console.log('钱包连接成功!');
+        return true;
+      } catch (innerError) {
+        console.error('连接钱包过程中出错:', innerError);
+        alert(`连接钱包失败: ${innerError.message || '未知错误'}`);
         return false;
       }
-
-      // 获取signer
-      this.signer = await this.provider.getSigner();
-      const address = await this.signer.getAddress();
-      
-      // 获取余额
-      const balance = await this.provider.getBalance(address);
-      const formattedBalance = ethers.formatEther(balance);
-      
-      // 获取chainId
-      const network = await this.provider.getNetwork();
-      const chainId = network.chainId.toString();
-
-      // 更新Redux状态
-      store.dispatch(setWallet({
-        address,
-        balance: formattedBalance,
-        chainId,
-      }));
-
-      // 监听账户变化
-      window.ethereum.on('accountsChanged', this.handleAccountsChanged);
-      
-      // 监听链变化
-      window.ethereum.on('chainChanged', this.handleChainChanged);
-
-      return true;
     } catch (error) {
       console.error('连接钱包失败:', error);
+      alert(`连接钱包失败: ${error.message || '未知错误'}`);
       return false;
     }
   }

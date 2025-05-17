@@ -12,7 +12,8 @@ import {
   ListItem,
   ListItemText,
   Chip,
-  alpha
+  alpha,
+  Avatar
 } from '@mui/material';
 import { 
   AccountBalanceWallet as WalletIcon,
@@ -22,14 +23,21 @@ import {
   ArrowForward as ArrowForwardIcon
 } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
-import { RootState } from '../store';
+import { RootState } from '../store/store';
 import walletService from '../services/walletService';
+
+interface TokenBalance {
+  symbol: string;
+  balance: string;
+}
 
 const WalletButton: React.FC = () => {
   const { address, isConnected, balance, chainId, tokenBalances, isLoadingTokens } = useSelector((state: RootState) => state.wallet);
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const formattedBalance = balance ? Number(balance).toFixed(4) : '0.0000';
   
   // 组件加载时获取代币余额
   useEffect(() => {
@@ -44,31 +52,53 @@ const WalletButton: React.FC = () => {
   const handleConnectWallet = async () => {
     setLoading(true);
     try {
-      await walletService.connectWallet();
+      console.log('开始连接钱包...');
+      const success = await walletService.connectWallet();
+      console.log('钱包连接结果:', success ? '成功' : '失败');
+      
+      if (!success) {
+        // 检查是否安装了MetaMask
+        if (!walletService.isMetaMaskInstalled()) {
+          alert('请安装MetaMask钱包插件，然后刷新页面');
+          window.open('https://metamask.io/download/', '_blank');
+        } else {
+          // MetaMask已安装但连接失败
+          alert('连接钱包失败，请确保MetaMask已解锁，并授权连接');
+        }
+      }
     } catch (error) {
       console.error('连接钱包失败:', error);
+      alert(`连接钱包出错: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setLoading(false);
     }
   };
   
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+  
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
   // 处理断开连接
   const handleDisconnect = () => {
     walletService.disconnectWallet();
     handleClose();
   };
-  
-  // 打开菜单
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    setAnchorEl(event.currentTarget);
+
+  const handleRefresh = async () => {
+    setIsLoadingBalance(true);
+    try {
+      await walletService.refreshBalance();
+    } catch (error) {
+      console.error('刷新余额失败:', error);
+    } finally {
+      setIsLoadingBalance(false);
+    }
   };
-  
-  // 关闭菜单
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-  
-  // 复制地址
+
   const copyAddress = () => {
     if (address) {
       navigator.clipboard.writeText(address);
@@ -76,38 +106,42 @@ const WalletButton: React.FC = () => {
       setTimeout(() => setCopySuccess(false), 2000);
     }
   };
-  
-  // 格式化地址显示
-  const formatAddress = (address: string) => {
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-  };
-  
-  // 获取链名称
-  const getChainName = (chainId: string) => {
-    const chains: Record<string, string> = {
-      '1': 'Ethereum Mainnet',
-      '5': 'Goerli Testnet',
-      '11155111': 'Sepolia Testnet',
-      '137': 'Polygon Mainnet',
-      '80001': 'Mumbai Testnet',
-      '56': 'BNB Smart Chain',
-      '97': 'BSC Testnet',
-      '42161': 'Arbitrum One',
-      '421613': 'Arbitrum Goerli',
-      '10': 'Optimism',
-      '420': 'Optimism Goerli',
-      '43114': 'Avalanche C-Chain',
-      '43113': 'Avalanche Fuji'
-    };
+
+  const handleOpenExplorer = () => {
+    if (!address || !chainId) return;
     
-    return chains[chainId] || `Chain ID: ${chainId}`;
+    // 根据chainId获取区块浏览器URL
+    let explorerUrl = 'https://etherscan.io';
+    
+    const chainIdStr = String(chainId);
+    
+    if (chainIdStr === '11155111') { // Sepolia测试网
+      explorerUrl = 'https://sepolia.etherscan.io';
+    } else if (chainIdStr === '5') { // Goerli测试网
+      explorerUrl = 'https://goerli.etherscan.io';
+    }
+      
+    window.open(`${explorerUrl}/address/${address}`, '_blank');
   };
-  
-  // 刷新余额
-  const refreshBalance = async () => {
-    await walletService.refreshBalance();
+
+  // 格式化地址显示
+  const formatAddress = (addr: string) => `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+
+  // 获取链名称
+  const getChainName = (id: number | string | undefined): string => {
+    if (!id) return 'Unknown Network';
+    
+    const chainId = typeof id === 'string' ? parseInt(id, 10) : id;
+    
+    switch (chainId) {
+      case 1: return 'Ethereum Mainnet';
+      case 5: return 'Goerli Testnet';
+      case 11155111: return 'Sepolia Testnet';
+      default: return `Chain ID: ${chainId}`;
+    }
   };
-  
+
+  // 如果未连接钱包，显示连接按钮
   if (!isConnected) {
     return (
       <Button
@@ -116,138 +150,154 @@ const WalletButton: React.FC = () => {
         startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <WalletIcon />}
         onClick={handleConnectWallet}
         disabled={loading}
+        sx={{
+          borderRadius: '20px',
+          textTransform: 'none',
+          fontWeight: 'bold',
+          background: 'linear-gradient(90deg, #3a7bd5, #00d2ff)',
+          '&:hover': {
+            background: 'linear-gradient(90deg, #2b68c0, #00b3db)',
+          }
+        }}
       >
         {loading ? '连接中...' : '连接钱包'}
       </Button>
     );
   }
-  
+
   return (
-    <>
-      <Button
-        variant="outlined"
-        color="primary"
+    <React.Fragment>
+      <Button 
+        variant="contained" 
+        color="primary" 
         onClick={handleClick}
         startIcon={<WalletIcon />}
+        sx={{
+          borderRadius: '20px',
+          textTransform: 'none',
+          fontWeight: 'bold',
+          background: 'linear-gradient(90deg, #3a7bd5, #00d2ff)',
+          '&:hover': {
+            background: 'linear-gradient(90deg, #2b68c0, #00b3db)',
+          }
+        }}
       >
         {address ? formatAddress(address) : '已连接'}
       </Button>
-      
+
       <Menu
         anchorEl={anchorEl}
         open={open}
         onClose={handleClose}
-        MenuListProps={{
-          'aria-labelledby': 'wallet-button',
+        PaperProps={{
+          sx: {
+            borderRadius: '12px',
+            width: '280px',
+            padding: '8px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+          }
         }}
       >
-        <Box sx={{ p: 2, width: 280 }}>
+        <Box sx={{ p: 2, textAlign: 'center' }}>
+          <Avatar 
+            sx={{ 
+              width: 64, 
+              height: 64, 
+              margin: '0 auto 16px',
+              background: 'linear-gradient(45deg, #3a7bd5, #00d2ff)'
+            }}
+          >
+            {address ? address.substring(2, 4).toUpperCase() : 'W'}
+          </Avatar>
+          
           <Typography variant="subtitle1" fontWeight="bold">
-            钱包信息
+            {address && formatAddress(address)}
           </Typography>
           
-          <Box sx={{ mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            {getChainName(chainId)}
+          </Typography>
+
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 1 }}>
+            <Tooltip title="复制地址">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<CopyIcon />}
+                onClick={copyAddress}
+                color={copySuccess ? "success" : "primary"}
+              >
+                {copySuccess ? '已复制' : '复制'}
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="在区块浏览器中查看">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ArrowForwardIcon />}
+                onClick={handleOpenExplorer}
+              >
+                浏览器
+              </Button>
+            </Tooltip>
+          </Box>
+
+          <Box sx={{ mt: 3, textAlign: 'left' }}>
             <Typography variant="body2" color="text.secondary">
-              地址
+              链名称
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-              <Typography variant="body2" sx={{ mr: 1 }}>
-                {formatAddress(address || '')}
+            <Typography variant="body1" fontWeight="medium">
+              {chainId ? getChainName(chainId) : '未知网络'}
+            </Typography>
+          </Box>
+
+          <Box sx={{ mt: 2, textAlign: 'left' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="body2" color="text.secondary">
+                ETH 余额
               </Typography>
-              <Tooltip title={copySuccess ? "已复制!" : "复制地址"}>
-                <CopyIcon 
-                  fontSize="small" 
-                  sx={{ cursor: 'pointer', color: copySuccess ? 'success.main' : 'inherit' }} 
-                  onClick={copyAddress}
+              <Tooltip title="刷新余额">
+                <RefreshIcon
+                  fontSize="small"
+                  onClick={handleRefresh}
+                  sx={{ cursor: 'pointer', '&:hover': { color: 'primary.main' } }}
                 />
               </Tooltip>
             </Box>
+            <Typography variant="body1" fontWeight="bold">
+              {isLoadingBalance ? <CircularProgress size={16} /> : formattedBalance} ETH
+            </Typography>
           </Box>
-          
-          <Box sx={{ mt: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+
+          {tokenBalances && tokenBalances.length > 0 && (
+            <Box sx={{ mt: 2, textAlign: 'left' }}>
+              <Typography variant="body2" color="text.secondary" mb={1}>
                 代币余额
               </Typography>
-              <Button 
-                size="small" 
-                startIcon={<RefreshIcon fontSize="small" />}
-                onClick={refreshBalance}
-                disabled={isLoadingTokens}
-              >
-                {isLoadingTokens ? '加载中...' : '刷新'}
-              </Button>
-            </Box>
-            
-            {isLoadingTokens ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : tokenBalances && tokenBalances.length > 0 ? (
-              <List dense sx={{ mt: 1, p: 0 }}>
-                {/* 显示真实的代币余额 */}
-                {tokenBalances.map((token) => (
-                  <ListItem key={token.symbol} sx={{ px: 0, py: 0.5 }}>
-                    <ListItemText 
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Chip 
-                            label={token.symbol} 
-                            size="small" 
-                            sx={{ 
-                              mr: 1, 
-                              fontSize: '0.7rem',
-                              height: 20,
-                              bgcolor: alpha('#1976d2', 0.1),
-                              color: '#1976d2',
-                              '& .MuiChip-label': { px: 1 }
-                            }} 
-                          />
-                          <Typography variant="body2">{token.name}</Typography>
-                        </Box>
-                      }
-                      secondary={
-                        <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary' }}>
-                          {parseFloat(token.formattedBalance).toFixed(6)} {token.symbol}
-                        </Typography>
-                      }
+              <List dense sx={{ bgcolor: alpha('#f5f5f5', 0.5), borderRadius: 1, maxHeight: 120, overflow: 'auto' }}>
+                {tokenBalances.map((token: TokenBalance, index: number) => (
+                  <ListItem key={index}>
+                    <ListItemText
+                      primary={token.symbol}
+                      secondary={`${token.balance} ${token.symbol}`}
+                      primaryTypographyProps={{ fontWeight: 'bold' }}
                     />
                   </ListItem>
                 ))}
               </List>
-            ) : (
-              <Box sx={{ mt: 1, p: 1, bgcolor: alpha('#f5f5f5', 0.5), borderRadius: 1 }}>
-                <Typography variant="body2" color="text.secondary" align="center">
-                  没有发现代币余额
-                </Typography>
-              </Box>
-            )}
-            
-            <Box sx={{ mt: 1, p: 1, bgcolor: alpha('#f5f5f5', 0.5), borderRadius: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                ETH余额: {parseFloat(balance).toFixed(6)} ETH
-              </Typography>
             </Box>
-          </Box>
-          
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              网络
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              {chainId ? getChainName(chainId) : '未知网络'}
-            </Typography>
-          </Box>
+          )}
         </Box>
-        
+
         <Divider />
-        
+
         <MenuItem onClick={handleDisconnect}>
           <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
           断开连接
         </MenuItem>
       </Menu>
-    </>
+    </React.Fragment>
   );
 };
 

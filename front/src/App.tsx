@@ -6,8 +6,9 @@ import {
   Grid, 
   CssBaseline 
 } from '@mui/material';
-import { Provider } from 'react-redux';
-import { store } from './store/index';
+// Redux已在index.tsx中提供，这里不需要重复导入
+// import { Provider } from 'react-redux';
+// import { store } from './store/index';
 
 // Import components
 import Navbar from './components/Navbar';
@@ -106,7 +107,6 @@ const theme = createTheme({
 
 function App() {
   return (
-    <Provider store={store}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <BrowserRouter>
@@ -120,7 +120,6 @@ function App() {
           </Routes>
         </BrowserRouter>
       </ThemeProvider>
-    </Provider>
   );
 }
 

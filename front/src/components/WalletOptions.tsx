@@ -54,7 +54,7 @@ export function WalletOptions({ buttonStyle = 'default' }: { buttonStyle?: 'defa
       <Stack spacing={2} sx={{ p: 2 }}>
         {connectors.map((connector) => (
           <WalletOption
-            key={connector.uid}
+            key={connector.id}
             connector={connector}
             onClick={() => {
               connect({ connector });
@@ -63,7 +63,7 @@ export function WalletOptions({ buttonStyle = 'default' }: { buttonStyle?: 'defa
           />
         ))}
       </Stack>
-      {status === 'pending' && (
+      {status === 'loading' && (
         <Typography sx={{ mt: 2, textAlign: 'center' }}>连接中...</Typography>
       )}
       {error && (

@@ -194,7 +194,7 @@ const Home: React.FC = () => {
                     <Button 
                       size="medium" 
                       color="primary"
-                      onClick={() => navigate('/credit-score')}
+                      onClick={() => navigate('/credit-score-intro')}
                       sx={{ 
                         borderRadius: '20px',
                         px: 2,
@@ -203,7 +203,7 @@ const Home: React.FC = () => {
                         }
                       }}
                     >
-                      查询信用分
+                      了解更多
                     </Button>
                   </CardActions>
                 </Card>
@@ -270,7 +270,7 @@ const Home: React.FC = () => {
                     <Button 
                       size="medium" 
                       color="secondary"
-                      onClick={() => navigate('/dashboard')}
+                      onClick={() => navigate('/risk-control-intro')}
                       sx={{ 
                         borderRadius: '20px',
                         px: 2,
@@ -346,7 +346,7 @@ const Home: React.FC = () => {
                     <Button 
                       size="medium" 
                       color="warning"
-                      onClick={() => navigate('/dashboard')}
+                      onClick={() => navigate('/token-model-intro')}
                       sx={{ 
                         borderRadius: '20px',
                         px: 2,

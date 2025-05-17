@@ -348,8 +348,4 @@ const walletService = new WalletService();
 export default walletService;
 
 // 为TypeScript添加window.ethereum类型
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
+// 注意：ethereum 类型已在 src/types/ethereum.d.ts 中定义

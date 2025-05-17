@@ -1,54 +1,83 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
-import { parseEther, formatEther } from 'viem';
-import { sepolia } from 'wagmi/chains';
-import { 
-  CORE_LENDING_ADDRESS, 
-  CORE_LENDING_ABI, 
-  LENDING_POOL_ADDRESS, 
-  LENDING_POOL_ABI,
-  getEtherscanLink
-} from './contractConfig';
+import { ethers } from 'ethers';
+import { CORE_LENDING_ADDRESS, CORE_LENDING_ABI, LENDING_POOL_ADDRESS, LENDING_POOL_ABI, getEtherscanLink } from './contractConfig';
+import { isBlacklisted, initBlacklistService } from '../services/blacklistService';
 
 // 借款相关 Hook
 export const useLending = () => {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const [address, setAddress] = useState<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
   const [loans, setLoans] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [interestRate, setInterestRate] = useState(10);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   
-  // 写入合约
-  const { writeContractAsync } = useWriteContract();
+  // 连接钱包
+  const connectWallet = async () => {
+    if (typeof window.ethereum !== 'undefined') {
+      try {
+        // 请求账户访问
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        setAddress(accounts[0]);
+        setIsConnected(true);
+        return accounts[0];
+      } catch (error) {
+        console.error('连接钱包失败:', error);
+        throw error;
+      }
+    } else {
+      throw new Error('请安装 MetaMask!');
+    }
+  };
   
-  // 交易状态监控
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash: txHash as `0x${string}`,
-    query: {
-      enabled: Boolean(txHash),
-    },
-  });
+  // 创建合约实例
+  const getContract = async () => {
+    if (typeof window.ethereum !== 'undefined') {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      return new ethers.Contract(CORE_LENDING_ADDRESS, CORE_LENDING_ABI, signer);
+    } else {
+      throw new Error('请安装 MetaMask!');
+    }
+  };
+  
+  // 创建借贷池合约实例
+  const getLendingPoolContract = async () => {
+    if (typeof window.ethereum !== 'undefined') {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      return new ethers.Contract(LENDING_POOL_ADDRESS, LENDING_POOL_ABI, signer);
+    } else {
+      throw new Error('请安装 MetaMask!');
+    }
+  };
   
   // 监控交易状态
-  useEffect(() => {
-    if (isConfirming) {
+  const monitorTransaction = async (txHash: string) => {
+    if (!txHash) return;
+    
+    try {
       setTxStatus('pending');
-    } else if (isConfirmed) {
-      setTxStatus('success');
-      // 交易成功后刷新贷款列表
-      fetchLoans();
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const receipt = await provider.waitForTransaction(txHash);
+      
+      if (receipt && receipt.status === 1) {
+        setTxStatus('success');
+      } else {
+        setTxStatus('error');
+      }
+    } catch (error) {
+      console.error('交易监控失败:', error);
+      setTxStatus('error');
     }
-  }, [isConfirming, isConfirmed]);
+  };
   
-  // 读取用户贷款
-  const { data: userLoans, refetch } = useReadContract({
-    address: LENDING_POOL_ADDRESS as `0x${string}`,
-    abi: LENDING_POOL_ABI,
-    functionName: 'getUserLoans',
-    args: address ? [address] : undefined,
-  });
+  // 监听交易状态变化
+  useEffect(() => {
+    if (txHash) {
+      monitorTransaction(txHash);
+    }
+  }, [txHash]);
   
   // 获取用户贷款
   const fetchLoans = useCallback(async () => {
@@ -57,18 +86,17 @@ export const useLending = () => {
     try {
       setLoading(true);
       
-      // 刷新合约数据
-      await refetch();
+      const lendingPoolContract = await getLendingPoolContract();
+      const userLoans = await lendingPoolContract.getUserLoans(address);
       
-      // 如果有合约数据，则格式化并更新状态
-      if (userLoans && Array.isArray(userLoans)) {
-        const formattedLoans = userLoans.map((loan: any, index: number) => ({
-          id: index,
-          amount: formatEther(loan.amount),
-          collateral: formatEther(loan.collateral),
-          dueTime: Number(loan.dueTime) * 1000, // 转换为毫秒
-          liquidated: loan.liquidated,
-          borrower: loan.borrower
+      if (userLoans) {
+        const formattedLoans = userLoans.map((loan: any) => ({
+          id: loan.id.toString(),
+          amount: ethers.formatEther(loan.amount),
+          collateral: ethers.formatEther(loan.collateral),
+          duration: loan.duration.toString(),
+          startTime: new Date(Number(loan.startTime) * 1000).toLocaleString(),
+          isRepaid: loan.isRepaid,
         }));
         
         setLoans(formattedLoans);
@@ -78,114 +106,178 @@ export const useLending = () => {
     } finally {
       setLoading(false);
     }
-  }, [isConnected, address, userLoans, refetch]);
+  }, [isConnected, address]);
   
-  // 初始加载
+  // 首次加载时获取贷款
   useEffect(() => {
     if (isConnected && address) {
       fetchLoans();
     }
   }, [isConnected, address, fetchLoans]);
   
-  // 借款 - 支持抵押品
+  // 监听钱包连接状态
+  useEffect(() => {
+    // 检查是否已经连接
+    const checkConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAddress(accounts[0]);
+            setIsConnected(true);
+          }
+        } catch (error) {
+          console.error('检查钱包连接失败:', error);
+        }
+      }
+    };
+    
+    checkConnection();
+    
+    // 监听账户变化
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.on('accountsChanged', (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAddress(accounts[0]);
+          setIsConnected(true);
+          fetchLoans();
+        } else {
+          setAddress(undefined);
+          setIsConnected(false);
+          setLoans([]);
+        }
+      });
+    }
+    
+    return () => {
+      if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.removeListener('accountsChanged', () => {});
+      }
+    };
+  }, [fetchLoans]);
+  
+  // 初始化黑名单服务
+  useEffect(() => {
+    initBlacklistService().catch(error => {
+      console.error('初始化黑名单服务失败:', error);
+    });
+  }, []);
+
+  // 借款  // 有抵押借款
   const borrow = useCallback(async (amount: string, collateralAmount: string, duration: number) => {
-    if (!isConnected || !address) {
-      throw new Error('钱包未连接');
+    if (!isConnected) {
+      await connectWallet();
+    }
+
+    // 检查地址是否在黑名单中
+    if (address && isBlacklisted(address)) {
+      throw new Error('您的地址在黑名单中，无法借款。如有疑问，请联系客服。');
     }
 
     try {
       setTxStatus('pending');
       console.log(`调用借款函数: 金额=${amount}, 抵押品=${collateralAmount}, 期限=${duration}`);
       
-      const amountInWei = parseEther(amount);
-      const collateralInWei = parseEther(collateralAmount);
+      const amountInWei = ethers.parseEther(amount);
+      const collateralInWei = ethers.parseEther(collateralAmount);
       
       // 调用合约
-      const hash = await writeContractAsync({
-        address: CORE_LENDING_ADDRESS as `0x${string}`,
-        abi: CORE_LENDING_ABI,
-        functionName: 'borrow',
-        args: [amountInWei, collateralInWei, BigInt(duration)],
-        account: address,
-        chain: sepolia,
-      });
+      const contract = await getContract();
+      const tx = await contract.borrow(amountInWei, collateralInWei, duration);
       
-      setTxHash(hash);
-      return { hash, etherscanLink: getEtherscanLink(hash) };
+      setTxHash(tx.hash);
+      
+      // 等待交易确认
+      await tx.wait();
+      setTxStatus('success');
+      
+      // 刷新贷款列表
+      fetchLoans();
+      
+      return { hash: tx.hash, etherscanLink: getEtherscanLink(tx.hash) };
     } catch (error) {
       console.error('借款失败:', error);
       setTxStatus('error');
       throw error;
     }
-  }, [isConnected, address, writeContractAsync]);
+  }, [isConnected, connectWallet, fetchLoans]);
   
   // 无抵押借款
   const borrowWithoutCollateral = useCallback(async (amount: string, duration: number) => {
-    if (!isConnected || !address) {
-      throw new Error('钱包未连接');
+    if (!isConnected) {
+      await connectWallet();
+    }
+
+    // 检查地址是否在黑名单中
+    if (address && isBlacklisted(address)) {
+      throw new Error('您的地址在黑名单中，无法借款。如有疑问，请联系客服。');
     }
 
     try {
       setTxStatus('pending');
       console.log(`调用无抵押借款函数: 金额=${amount}, 期限=${duration}`);
       
-      const amountInWei = parseEther(amount);
+      const amountInWei = ethers.parseEther(amount);
       
       // 调用合约
-      const hash = await writeContractAsync({
-        address: CORE_LENDING_ADDRESS as `0x${string}`,
-        abi: CORE_LENDING_ABI,
-        functionName: 'borrowWithoutCollateral',
-        args: [amountInWei, BigInt(duration)],
-        account: address,
-        chain: sepolia,
-      });
+      const contract = await getContract();
+      const tx = await contract.borrowWithoutCollateral(amountInWei, duration);
       
-      setTxHash(hash);
-      return { hash, etherscanLink: getEtherscanLink(hash) };
+      setTxHash(tx.hash);
+      
+      // 等待交易确认
+      await tx.wait();
+      setTxStatus('success');
+      
+      // 刷新贷款列表
+      fetchLoans();
+      
+      return { hash: tx.hash, etherscanLink: getEtherscanLink(tx.hash) };
     } catch (error) {
       console.error('无抵押借款失败:', error);
       setTxStatus('error');
       throw error;
     }
-  }, [isConnected, address, writeContractAsync]);
+  }, [isConnected, connectWallet, fetchLoans]);
 
   // 还款
   const repay = useCallback(async (loanId: number) => {
-    if (!isConnected || !address) {
-      throw new Error('钱包未连接');
+    if (!isConnected) {
+      await connectWallet();
     }
     
     try {
       setTxStatus('pending');
       
       // 调用合约
-      const hash = await writeContractAsync({
-        address: CORE_LENDING_ADDRESS as `0x${string}`,
-        abi: CORE_LENDING_ABI,
-        functionName: 'repay',
-        args: [BigInt(loanId)],
-        account: address,
-        chain: sepolia,
-      });
+      const contract = await getContract();
+      const tx = await contract.repay(loanId);
       
-      setTxHash(hash);
-      return { hash, etherscanLink: getEtherscanLink(hash) };
+      setTxHash(tx.hash);
+      
+      // 等待交易确认
+      await tx.wait();
+      setTxStatus('success');
+      
+      // 刷新贷款列表
+      fetchLoans();
+      
+      return { hash: tx.hash, etherscanLink: getEtherscanLink(tx.hash) };
     } catch (error) {
       console.error('还款失败:', error);
       setTxStatus('error');
       throw error;
     }
-  }, [isConnected, address, writeContractAsync]);
+  }, [isConnected, connectWallet, fetchLoans]);
 
   return {
+    address,
+    isConnected,
+    connectWallet,
     loans,
     loading,
-    interestRate,
-    txStatus,
     txHash,
-    isConfirming,
-    isConfirmed,
+    txStatus,
     borrow,
     borrowWithoutCollateral,
     repay,
@@ -195,12 +287,51 @@ export const useLending = () => {
 
 // 代币相关 Hook
 export const useTokens = () => {
-  const { address, isConnected } = useAccount();
+  const [address, setAddress] = useState<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
   const [balances, setBalances] = useState({
     tokenA: '0',
     tokenB: '0'
   });
   const [loading, setLoading] = useState(false);
+  
+  // 检查钱包连接状态
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAddress(accounts[0]);
+            setIsConnected(true);
+          }
+        } catch (error) {
+          console.error('检查钱包连接失败:', error);
+        }
+      }
+    };
+    
+    checkConnection();
+    
+    // 监听账户变化
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.on('accountsChanged', (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAddress(accounts[0]);
+          setIsConnected(true);
+        } else {
+          setAddress(undefined);
+          setIsConnected(false);
+        }
+      });
+    }
+    
+    return () => {
+      if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.removeListener('accountsChanged', () => {});
+      }
+    };
+  }, []);
 
   // 获取代币余额
   const fetchBalances = useCallback(async () => {
@@ -238,9 +369,48 @@ export const useTokens = () => {
 
 // 黑名单相关 Hook
 export const useBlacklist = () => {
-  const { address, isConnected } = useAccount();
+  const [address, setAddress] = useState<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
   const [isBlacklisted, setIsBlacklisted] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // 检查钱包连接状态
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAddress(accounts[0]);
+            setIsConnected(true);
+          }
+        } catch (error) {
+          console.error('检查钱包连接失败:', error);
+        }
+      }
+    };
+    
+    checkConnection();
+    
+    // 监听账户变化
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.on('accountsChanged', (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAddress(accounts[0]);
+          setIsConnected(true);
+        } else {
+          setAddress(undefined);
+          setIsConnected(false);
+        }
+      });
+    }
+    
+    return () => {
+      if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.removeListener('accountsChanged', () => {});
+      }
+    };
+  }, []);
 
   // 检查是否被列入黑名单
   const checkBlacklist = useCallback(async () => {

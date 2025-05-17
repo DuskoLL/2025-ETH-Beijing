@@ -40,10 +40,11 @@ import {
 } from '@mui/material';
 import { ethers } from 'ethers';
 // 导入智能合约相关hooks
-import { useLending, useTokens, useBlacklist } from '../contracts/hooks';
+import { useLending, useTokens, useBlacklist } from '../contracts/useContract';
 import TeamIconImage from '../components/TeamIconImage';
 import { styled } from '@mui/material/styles';
 import { useWallet } from '../hooks/useWallet';
+import TransactionStatus from '../components/TransactionStatus';
 import {
   TeamLogo,
   ArrowBackTeamIcon as ArrowBackIcon,
@@ -151,7 +152,7 @@ interface LoanInfo {
   // 新增字段
   riskPoolInterest: number; // 风险池分配利息
   lenderInterest: number; // 借款人分配利息
-  collateralAmount: number; // 抵押品金额
+  // 移除抵押品金额字段
 }
 
 const Lending: React.FC = () => {
@@ -174,6 +175,8 @@ const Lending: React.FC = () => {
       setError('');
     }
   }, [isConnected]);
+  
+
 
   const handleNext = () => {
     if (activeStep === 0) {
@@ -234,9 +237,25 @@ const Lending: React.FC = () => {
   };
   
   // 从智能合约中导入借款相关功能
-  const { borrow, interestRate } = useLending();
+  const { borrow, borrowWithoutCollateral, interestRate, txStatus, txHash } = useLending();
   const { balances, fetchBalances } = useTokens();
   const { isBlacklisted } = useBlacklist();
+  
+  // 监听交易状态变化
+  useEffect(() => {
+    if (txStatus === 'success' && txHash) {
+      // 交易成功，更新界面状态
+      setCompleted(true);
+      setActiveStep(2);
+      setLoading(false);
+      // 更新代币余额
+      fetchBalances();
+    } else if (txStatus === 'error' && txHash) {
+      // 交易失败，显示错误信息
+      setError('交易失败，请查看详情');
+      setLoading(false);
+    }
+  }, [txStatus, txHash, fetchBalances]);
   
   // 计算借款详情
   const handleCalculateLoan = async () => {
@@ -269,12 +288,7 @@ const Lending: React.FC = () => {
       return;
     }
     
-    // 检查抵押品余额
-    const requiredCollateral = (parseInt(loanAmount) * 150) / 100; // 150% 抵押率
-    if (parseFloat(balances.tokenB) < requiredCollateral) {
-      setError(`抵押品余额不足，需要至少 ${requiredCollateral} ETH`);
-      return;
-    }
+    // 不再需要检查抵押品余额，因为借款不需要抵押
 
     setLoading(true);
     setError('');
@@ -311,9 +325,6 @@ const Lending: React.FC = () => {
       const riskPoolInterest = totalInterest * 0.2; // 20%进入风险池
       const lenderInterest = totalInterest * 0.8; // 80%给借款人
       
-      // 计算抵押品金额 - 150%的抵押率
-      const collateralAmount = amount * 1.5;
-      
       const mockLoanInfo: LoanInfo = {
         amount,
         duration,
@@ -325,8 +336,7 @@ const Lending: React.FC = () => {
         dueDate: formattedDueDate,
         interestRate: rate * 100, // 转换为百分比
         riskPoolInterest,
-        lenderInterest,
-        collateralAmount
+        lenderInterest
       };
       
       setLoanInfo(mockLoanInfo);
@@ -350,26 +360,21 @@ const Lending: React.FC = () => {
     setError('');
     
     try {
-      // 计算抵押品金额 - 需要150%的抵押率
-      const collateralAmount = (parseFloat(loanInfo.amount.toString()) * 1.5).toFixed(6);
-      
       // 计算借款期限（秒）
       const durationInSeconds = loanInfo.duration * 24 * 60 * 60; // 天数转换为秒
       
-      // 调用智能合约进行借款
-      const tx = await borrow(
+      // 调用智能合约进行无抵押借款
+      const tx = await borrowWithoutCollateral(
         loanInfo.amount.toString(), 
-        collateralAmount, 
         durationInSeconds
       );
       
-      // 设置交易哈希
-      setTransactionHash(tx.hash);
-      setCompleted(true);
-      setActiveStep(2);
+      // 交易已发送，等待确认
+      console.log('交易已发送:', tx.hash);
+      console.log('交易链接:', tx.etherscanLink);
       
-      // 更新代币余额
-      await fetchBalances();
+      // 交易状态将由 useEffect 监听并处理
+      // 不需要在这里设置状态，因为 useEffect 会处理
     } catch (err: any) {
       console.error('借款失败:', err);
       setError(err.message || '借款交易失败');
@@ -453,7 +458,7 @@ const Lending: React.FC = () => {
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
                           信用评分
                         </Typography>
                         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
@@ -837,8 +842,7 @@ const Lending: React.FC = () => {
                           variant="contained"
                           color="primary"
                           onClick={handleConfirmLoan}
-                          endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
-                          disabled={loading}
+                          disabled={loading || !isConnected || txStatus === 'pending'}
                           sx={{
                             py: 1.2,
                             px: 3,
@@ -848,6 +852,16 @@ const Lending: React.FC = () => {
                         >
                           {loading ? '处理中...' : '确认借款'}
                         </Button>
+                        
+                        {/* 交易状态显示 */}
+                        {txHash && (
+                          <Box sx={{ mt: 2 }}>
+                            <TransactionStatus 
+                              txHash={txHash} 
+                              status={txStatus} 
+                            />
+                          </Box>
+                        )}
                       </Box>
                     </Box>
                   )}
@@ -1034,19 +1048,7 @@ const Lending: React.FC = () => {
                           </Typography>
                         </LoanDetailItem>
                         
-                        <LoanDetailItem>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
-                              抵押品金额 (150%)
-                            </Typography>
-                            <Tooltip title="借款需要150%的抵押率以确保资金安全">
-                              <InfoIcon fontSize="small" sx={{ ml: 1, color: alpha('#fff', 0.5) }} />
-                            </Tooltip>
-                          </Box>
-                          <Typography variant="body1" fontWeight="500" sx={{ color: '#fff' }}>
-                            {formatAmount(loan.collateralAmount)} ETH
-                          </Typography>
-                        </LoanDetailItem>
+                        {/* 移除抵押品金额显示 */}
                         <Grid size={{ xs: 6 }}>
                           <Typography variant="body2" sx={{ color: alpha('#fff', 0.7) }}>
                             状态

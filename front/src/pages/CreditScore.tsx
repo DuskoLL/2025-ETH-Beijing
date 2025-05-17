@@ -23,8 +23,8 @@ import {
 import { styled } from '@mui/material/styles';
 import { useWallet } from '../hooks/useWallet';
 import TeamIconImage from '../components/TeamIconImage';
-// 导入信用评分相关功能
-import { useCreditScore } from '../contracts/creditScore';
+// 导入模拟信用评分相关功能
+import { useCreditScore } from '../contracts/mockCreditScore';
 import {
   TechCard,
   DataCard,
@@ -38,8 +38,7 @@ import {
   NeonText,
   DataIndicator
 } from '../components/TechStyles';
-import WashTradeCheck from '../components/WashTradeCheck';
-import CombinedScoreDisplay from '../components/CombinedScoreDisplay';
+// 移除不需要的组件导入
 
 interface CreditScoreResult {
   score: number;
@@ -145,7 +144,6 @@ const CreditScore: React.FC = () => {
   const [error, setError] = useState('');
   const [result, setResult] = useState<CreditScoreResult | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
-  const [tabValue, setTabValue] = useState(0);
   
   // 使用信用评分hook
   const { 
@@ -504,29 +502,22 @@ const CreditScore: React.FC = () => {
                   <Fade in={scanComplete} timeout={1000}>
                     <Box>
                       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                        <Tabs 
-                          value={tabValue} 
-                          onChange={(e, newValue) => setTabValue(newValue)}
-                          centered
-                          textColor="primary"
-                          indicatorColor="primary"
-                          sx={{
-                            '& .MuiTab-root': {
-                              color: 'text.secondary',
-                              '&.Mui-selected': {
-                                color: 'primary.main',
-                              },
-                            },
+                        <Typography 
+                          variant="h5" 
+                          component="h2" 
+                          fontWeight="600" 
+                          sx={{ 
+                            textAlign: 'center',
+                            color: theme.palette.primary.main,
+                            textShadow: `0 0 5px ${alpha(theme.palette.primary.main, 0.5)}`,
+                            py: 1
                           }}
                         >
-                          <Tab label="基础信用评分" />
-                          <Tab label="对敲交易检测" />
-                          <Tab label="综合评分" />
-                        </Tabs>
+                          基础信用评分
+                        </Typography>
                       </Box>
                       
-                      {tabValue === 0 && (
-                        <Grid container spacing={3}>
+                      <Grid container spacing={3}>
                           <Grid size={{ xs: 12 }}>
                             <DataCard sx={{ height: '100%', minHeight: 500 }}>
                               <CardContent sx={{ p: 4 }}>
@@ -718,21 +709,7 @@ const CreditScore: React.FC = () => {
                             </DataCard>
                           </Grid>
                         </Grid>
-                      )}
                       
-                      {tabValue === 1 && (
-                        <WashTradeCheck 
-                          address={inputAddress} 
-                          originalScore={result ? result.score : 800}
-                        />
-                      )}
-                      
-                      {tabValue === 2 && (
-                        <CombinedScoreDisplay 
-                          address={inputAddress}
-                          token="ETH"
-                        />
-                      )}
                     </Box>
                   </Fade>
                 )}

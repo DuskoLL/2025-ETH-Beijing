@@ -136,18 +136,37 @@ export const useLending = () => {
     }
   }, [isConnected, address]);
 
-  // 模拟借款
+  // 模拟借款 - 支持无抵押借款
   const borrow = useCallback(async (amount: string, collateralAmount: string, duration: number) => {
     if (!isConnected) {
       throw new Error('钱包未连接');
     }
 
     try {
-      // 模拟交易
+      console.log(`调用借款函数: 金额=${amount}, 抵押品=${collateralAmount}, 期限=${duration}`);
+      // 模拟调用智能合约的borrowWithoutCollateral函数
+      // 在真实环境中，这里将调用修改后的智能合约
       await new Promise(resolve => setTimeout(resolve, 1000));
       return { hash: '0x' + Math.random().toString(16).substring(2, 42) };
     } catch (error) {
       console.error('借款失败:', error);
+      throw error;
+    }
+  }, [isConnected]);
+  
+  // 添加无抵押借款函数
+  const borrowWithoutCollateral = useCallback(async (amount: string, duration: number) => {
+    if (!isConnected) {
+      throw new Error('钱包未连接');
+    }
+
+    try {
+      console.log(`调用无抵押借款函数: 金额=${amount}, 期限=${duration}`);
+      // 模拟调用智能合约的borrowWithoutCollateral函数
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { hash: '0x' + Math.random().toString(16).substring(2, 42) };
+    } catch (error) {
+      console.error('无抵押借款失败:', error);
       throw error;
     }
   }, [isConnected]);
@@ -180,6 +199,7 @@ export const useLending = () => {
     loading,
     interestRate,
     borrow,
+    borrowWithoutCollateral, // 导出无抵押借款函数
     repay,
     fetchLoans,
   };

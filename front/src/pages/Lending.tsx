@@ -237,9 +237,12 @@ const Lending: React.FC = () => {
   };
   
   // 从智能合约中导入借款相关功能
-  const { borrow, borrowWithoutCollateral, interestRate, txStatus, txHash } = useLending();
+  const { borrow, borrowWithoutCollateral, txStatus, txHash } = useLending();
   const { balances, fetchBalances } = useTokens();
   const { isBlacklisted } = useBlacklist();
+  
+  // 定义固定利率
+  const interestRate = 10; // 10%
   
   // 监听交易状态变化
   useEffect(() => {
@@ -297,11 +300,11 @@ const Lending: React.FC = () => {
       // 模拟API延迟
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // 根据信用评分动态计算利率
-      const creditScore = Math.floor(Math.random() * 30) + 70; // 70-100
-      let rate = 0.08; // 基础利率
+      // 获取用户的信用评分和可借额度信息
+      const { creditScore, maxAmount } = getCreditLimitInfo();
       
       // 根据信用评分调整利率
+      let rate = 0.08; // 基础利率
       if (creditScore >= 90) {
         rate = 0.05;
       } else if (creditScore >= 80) {
@@ -314,7 +317,6 @@ const Lending: React.FC = () => {
       const duration = parseInt(loanDuration);
       const totalInterest = amount * rate * (duration / 365);
       const totalRepayment = amount + totalInterest;
-      const maxAmount = creditScore * 1000; // 最大借款额度与信用分数相关
       
       // 计算到期日期
       const currentDate = new Date();
@@ -520,7 +522,7 @@ const Lending: React.FC = () => {
                           value={loanAmount ? parseFloat(loanAmount) : 0}
                           onChange={(_, value) => setLoanAmount(value.toString())}
                           min={100}
-                          max={loanInfo ? loanInfo.maxAmount : 5000}
+                          max={loanInfo ? loanInfo.maxAmount : getCreditLimitInfo().maxAmount}
                           step={100}
                           valueLabelDisplay="auto"
                           valueLabelFormat={(value) => `${value} USDC`}
@@ -546,7 +548,7 @@ const Lending: React.FC = () => {
                       {isConnected ? (
                         <>
                           <Typography variant="caption" color="primary" sx={{ fontWeight: 500 }}>
-                            可借额度: {loanInfo ? formatAmount(loanInfo.maxAmount) : '5,000'} USDC
+                            可借额度: {loanInfo ? formatAmount(loanInfo.maxAmount) : formatAmount(getCreditLimitInfo().maxAmount)} USDC
                           </Typography>
                           
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -691,7 +693,7 @@ const Lending: React.FC = () => {
   // 渲染第二步 - 确认借款详情
   const renderStep2 = () => {
     // 计算风险评分 (0-100)
-    const riskScore = loanAmount ? Math.min(100, Math.round((parseFloat(loanAmount) / (loanInfo?.maxAmount || 5000)) * 100)) : 0;
+    const riskScore = loanAmount ? Math.min(100, Math.round((parseFloat(loanAmount) / (loanInfo?.maxAmount || getCreditLimitInfo().maxAmount)) * 100)) : 0;
     
     // 获取风险评分颜色
     const getRiskScoreColor = (score: number) => {

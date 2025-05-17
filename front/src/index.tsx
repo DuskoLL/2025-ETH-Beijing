@@ -6,11 +6,14 @@ import reportWebVitals from './reportWebVitals';
 import { Provider } from 'react-redux';
 import { store } from './store/index';
 
-// 使用真实的WagmiProvider
+// React Query
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// 自定义组件
 import { ContractProvider } from './contracts/ContractProvider';
 
-// 添加 React Query 客户端
+// 创建 React Query 客户端
+
 const queryClient = new QueryClient();
 
 const root = ReactDOM.createRoot(
@@ -29,7 +32,4 @@ root.render(
   </React.StrictMode>
 );
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();

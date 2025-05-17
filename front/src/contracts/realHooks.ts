@@ -1,17 +1,69 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAccount as useWagmiAccount, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
 import contractService from './contractService';
 import { ethers } from 'ethers';
 
 // 使用真实的钱包账户
 export const useAccount = () => {
-  const account = useWagmiAccount();
+  const [address, setAddress] = useState<string | undefined>(undefined);
+  const [isConnected, setIsConnected] = useState(false);
+  
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAddress(accounts[0]);
+            setIsConnected(true);
+          }
+        } catch (error) {
+          console.error('检查钱包连接失败:', error);
+        }
+      }
+    };
+    
+    checkConnection();
+    
+    // 监听账户变化
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.on('accountsChanged', (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAddress(accounts[0]);
+          setIsConnected(true);
+        } else {
+          setAddress(undefined);
+          setIsConnected(false);
+        }
+      });
+    }
+    
+    return () => {
+      if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.removeListener('accountsChanged', () => {});
+      }
+    };
+  }, []);
   
   return {
-    address: account.address,
-    isConnected: account.isConnected,
-    status: account.status,
-    connector: account.connector,
+    address,
+    isConnected,
+    connectWallet: async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          if (accounts.length > 0) {
+            setAddress(accounts[0]);
+            setIsConnected(true);
+            return accounts[0];
+          }
+        } catch (error) {
+          console.error('连接钱包失败:', error);
+          throw error;
+        }
+      } else {
+        throw new Error('请安装 MetaMask!');
+      }
+    }
   };
 };
 

@@ -1,6 +1,9 @@
-import { http, createConfig } from 'wagmi'
+import { configureChains, createConfig } from 'wagmi'
 import { mainnet, sepolia } from 'wagmi/chains'
-import { injected, metaMask, walletConnect } from 'wagmi/connectors'
+import { InjectedConnector } from 'wagmi/connectors/injected'
+import { MetaMaskConnector } from 'wagmi/connectors/metaMask'
+import { WalletConnectConnector } from 'wagmi/connectors/walletConnect'
+import { publicProvider } from 'wagmi/providers/public'
 
 // 支持的区块链网络
 export const SUPPORTED_CHAINS = [
@@ -39,21 +42,27 @@ export const SUPPORTED_CHAINS = [
 // 如果环境变量未设置，则使用备用值（仅用于开发环境）
 const projectId = '3ec28e7a2f4b7d4a8f6e1a3b0c9d8e7f' // 替换为你的 WalletConnect 项目 ID
 
-// 创建 transports 对象
-const transports: Record<number, any> = {}
-SUPPORTED_CHAINS.forEach(chain => {
-  transports[chain.id] = http(chain.rpcUrl)
-})
+// 配置链和提供者
+const { chains, publicClient, webSocketPublicClient } = configureChains(
+  [sepolia, mainnet],
+  [publicProvider()]
+)
 
-// wagmi v2 配置
+// wagmi v1.4.12 配置
 export const config = createConfig({
-  chains: [sepolia, mainnet], // 将 Sepolia 放在第一位，作为默认网络
+  autoConnect: true,
   connectors: [
-    injected(),
-    metaMask(),
-    walletConnect({ projectId }),
+    new InjectedConnector({ chains }),
+    new MetaMaskConnector({ chains }),
+    new WalletConnectConnector({
+      chains,
+      options: {
+        projectId,
+      },
+    }),
   ],
-  transports,
+  publicClient,
+  webSocketPublicClient,
 })
 
 // 其余定义可继续保留（如SUPPORTED_CHAINS等）

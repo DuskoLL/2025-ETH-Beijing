@@ -18,6 +18,9 @@ import Lending from './pages/Lending';
 import SimpleLending from './pages/SimpleLending';
 import Dashboard from './pages/Dashboard';
 import Repayment from './pages/Repayment';
+import CreditScoreIntro from './pages/CreditScoreIntro';
+import RiskControlIntro from './pages/RiskControlIntro';
+import TokenModelIntro from './pages/TokenModelIntro';
 
 const theme = createTheme({
   palette: {
@@ -117,6 +120,9 @@ function App() {
             <Route path="/lending" element={<Lending />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/repayment" element={<Repayment />} />
+            <Route path="/credit-score-intro" element={<CreditScoreIntro />} />
+            <Route path="/risk-control-intro" element={<RiskControlIntro />} />
+            <Route path="/token-model-intro" element={<TokenModelIntro />} />
           </Routes>
         </BrowserRouter>
       </ThemeProvider>

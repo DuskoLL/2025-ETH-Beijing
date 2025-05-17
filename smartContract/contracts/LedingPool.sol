@@ -63,7 +63,7 @@ contract LendingPool is Ownable{
         return repayment;
     }
     
-    function liquidate(address user, uint256 loanId, address liquidator) external returns (bool needsAuction, uint256 shortage) {
+    function liquidate(address user, uint256 loanId, address liquidator) external returns (bool needsAuction, uint256 shortage, uint amount) {
         Loan storage loan = loans[user][loanId];
         require(!loan.liquidated, "the loan is done");
         require(block.timestamp > loan.dueTime, "the loan is not over");
@@ -80,10 +80,10 @@ contract LendingPool is Ownable{
             
             loan.liquidated = true;
             emit LoanLiquidated(user, loanId, liquidator, true, loan.amount, penalty);
-            return (false, 0);
+            return (false, 0, 0);
         } else {
             // 第三方清算 - 启动拍卖流程
-            uint256 reward = loan.amount * THIRD_PARTY_LIQUIDATION_REWARD / 100;
+            uint256 reward = loan.collateral * THIRD_PARTY_LIQUIDATION_REWARD / 100;
             
             // 给清算人奖励（从抵押品中扣除）
             uint256 remainingCollateral = loan.collateral - reward;
@@ -93,7 +93,7 @@ contract LendingPool is Ownable{
             loan.collateral = remainingCollateral;
             
             emit LoanLiquidated(user, loanId, liquidator, false, 0, reward);
-            return (true, loan.amount); // 需要拍卖全部贷款金额
+            return (true, loan.amount, reward); // 需要拍卖全部贷款金额
         }
     }
     

@@ -11,7 +11,7 @@ interface ILendingPool {
 
     function borrow(address user, uint256 amount, uint256 collateralAmount, uint256 duration) external returns(uint);
     function repay(address user, uint256 loanId) external returns(uint);
-    function liquidate(address user, uint256 loanId, address liquidater) external returns (bool needsAuction, uint256 shortage);
+    function liquidate(address user, uint256 loanId, address liquidater) external returns (bool needsAuction, uint256 shortage, uint );
     function getLoan(address user, uint256 loanId) external view returns (Loan memory);
 }
 
@@ -24,7 +24,7 @@ interface IBlacklist {
 
 // IAuctionManager.sol
 interface IAuctionManager {
-    function startAuction(address user, uint256 loanId, uint256 shortage) external;
+    function startAuction(address user, uint256 loanId) external;
     function bid(uint256 auctionId, uint256 bidAmount) external;
     function settleAuction(uint256 auctionId) external;
 }

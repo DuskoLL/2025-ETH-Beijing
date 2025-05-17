@@ -31,11 +31,11 @@ contract CoreLending is Ownable {
         emit Repaid(msg.sender, loanId, repayamount);
     }
     
-    function liquidate(address user, uint256 loanId) external {
-        (bool needsAuction, uint256 shortage) = lendingPool.liquidate(user, loanId, msg.sender);
+    function liquidate(address user, uint256 loanId) external returns(uint amount){
+        (bool needsAuction, ,uint amount) = lendingPool.liquidate(user, loanId, msg.sender);
         if (needsAuction) {
             blacklist.addToBlacklist(user);
-            auctionManager.startAuction(user, loanId, shortage);
+            auctionManager.startAuction(user, loanId);
         }
     }
     

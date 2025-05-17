@@ -10,26 +10,27 @@ contract Blacklist is Ownable {
 
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    EnumerableSet.AddressSet private _blacklist;
+    mapping(address => bool) public _blacklist;
     
     event AddedToBlacklist(address indexed account);
     event RemovedFromBlacklist(address indexed account);
     
     function isBlacklisted(address account) external view returns (bool) {
-        return _blacklist.contains(account);
+        return _blacklist[account];
     }
     
     function addToBlacklist(address account) external {
-        require(_blacklist.add(account), "Already blacklisted");
+        require(!_blacklist[account], "Already blacklisted");
+        _blacklist[account] = true;
         emit AddedToBlacklist(account);
     }
     
     function removeFromBlacklist(address account) external {
-        require(_blacklist.remove(account), "Not blacklisted");
+        _blacklist[account] = false;
         emit RemovedFromBlacklist(account);
     }
     
-    function getBlacklistedCount() external view returns (uint256) {
-        return _blacklist.length();
-    }
+    // function getBlacklistedCount() external view returns (uint256) {
+    //     return _blacklist.length();
+    // }
 }
